@@ -2,17 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Rarity Clicker – Bubblegum Edition</title>
+  <title>Beyond Rare – Bubblegum Edition</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- Import Bubblegum Sans font -->
   <link href="https://fonts.googleapis.com/css2?family=Bubblegum+Sans&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Header:  Timer and Settings Icon -->
+  <!-- Header: Timer, Leaderboard Icon and Settings Icon -->
   <div id="header">
     <div id="timer">Time: 0.0s</div>
-    <div id="settingsIcon" onclick="toggleSettingsModal()">⚙️</div>
+    <div id="headerIcons">
+      <div id="leaderboardIcon" onclick="toggleLeaderboardModal()">🏆</div>
+      <div id="settingsIcon" onclick="toggleSettingsModal()">⚙️</div>
+    </div>
+  </div>
+  
+  <!-- Leaderboard Modal -->
+  <div id="leaderboardModal" class="modal">
+    <div class="modal-content leaderboard-modal">
+      <span class="close" onclick="toggleLeaderboardModal()">&times;</span>
+      <h3>🏆 Leaderboard</h3>
+      <p class="leaderboard-subtitle">Ranked by Completion %</p>
+      <ul id="leaderboardList"></ul>
+    </div>
   </div>
   
   <!-- Settings Modal -->
@@ -21,10 +34,29 @@
       <span class="close" onclick="toggleSettingsModal()">&times;</span>
       <h3>Settings</h3>
       
+      <!-- Player Profile Section -->
+      <div class="profile-section">
+        <h4>👤 Player Profile</h4>
+        <p>Name: <span id="playerNameDisplay"></span> <button onclick="changePlayerName()" class="small-btn">Edit</button></p>
+        <div class="completion-display">
+          <h5>Overall Completion</h5>
+          <div class="completion-percent-big"><span id="completionPercent">0%</span></div>
+          <div id="completionBreakdown"></div>
+        </div>
+      </div>
+      <hr />
+      
+      <!-- Achievements Section -->
+      <div class="achievements-section">
+        <h4>🏅 Achievements</h4>
+        <ul id="achievementsList"></ul>
+      </div>
+      <hr />
+      
       <!-- Shop Upgrades Section -->
       <div class="shop-section">
-        <h4>Shop Upgrades</h4>
-        <p>Points:  <span id="pointsDisplay">0</span></p>
+        <h4>🛒 Shop Upgrades</h4>
+        <p>Points: <span id="pointsDisplay">0</span></p>
         <button id="autoClickerBtn" onclick="purchaseAutoClicker()">Buy Auto Clicker (100 pts)</button>
         <button id="doublePointsBtn" onclick="purchaseDoublePoints()">Buy Double Points (200 pts)</button>
         <button id="goldenClickBtn" onclick="purchaseGoldenClick()">Buy Golden Click (400 pts)</button>
@@ -35,28 +67,28 @@
         <p>Double Points: <span id="doubleStatus">Off</span></p>
         <p>Golden Click: <span id="goldenStatus">Not Ready</span></p>
         <p>Luck Boost: <span id="luckBoostStatus">Inactive</span></p>
-        <p>Time Freeze:  <span id="timeFreezeStatus">Inactive</span></p>
+        <p>Time Freeze: <span id="timeFreezeStatus">Inactive</span></p>
         <p>Golden Mode: <span id="goldenModeStatus">Inactive</span></p>
       </div>
       
       <!-- Upstage Button (appears if every rarity up to "Ultra Legendary" is unlocked) -->
-      <button id="upstageButton" onclick="upstageGame()" style="display: none; background: orange;">UPSTAGE? </button>
+      <button id="upstageButton" onclick="upstageGame()" style="display: none; background: orange;">UPSTAGE?</button>
       <hr />
       
       <!-- Background Shop Section -->
       <div class="background-shop-section">
-        <h4>Background Shop</h4>
+        <h4>🎨 Background Shop</h4>
         <ul id="backgroundShopList"></ul>
       </div>
       <hr />
       
       <!-- Stats for Nerds Section -->
       <div class="stats-section">
-        <h4>Stats for Nerds</h4>
+        <h4>📊 Stats for Nerds</h4>
         <p>Total Clicks: <span id="totalClicks">0</span></p>
         <p>Rarest Find: <span id="rarestFind">None</span></p>
         <div>
-          <h5>Rarity Chances: </h5>
+          <h5>Rarity Chances:</h5>
           <ul id="chancesList"></ul>
         </div>
         <p id="masteryMedals">Mastery Medals: </p>
@@ -78,8 +110,7 @@
   <h2>Log of Finds</h2>
   <ul id="log"></ul>
   
-  <!-- Load scripts in order - script. js first (contains variables/data), then script2.js (contains functions that use them) -->
-  <script src="script. js"></script>
-  <script src="script2.js"></script>
+  <!-- Load combined script -->
+  <script src="script.js"></script>
 </body>
 </html>
