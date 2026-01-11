@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Beyond Rare – Bubblegum Edition</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Import Bubblegum Sans font -->
+  <link href="https://fonts.googleapis.com/css2?family=Bubblegum+Sans&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Header: Timer, Leaderboard Icon and Settings Icon -->
+  <div id="header">
+    <div id="timer">Time: 0.0s</div>
+    <div id="headerIcons">
+      <div id="leaderboardIcon" onclick="toggleLeaderboardModal()">🏆</div>
+      <div id="settingsIcon" onclick="toggleSettingsModal()">⚙️</div>
+    </div>
+  </div>
+  
+  <!-- Leaderboard Modal -->
+  <div id="leaderboardModal" class="modal">
+    <div class="modal-content leaderboard-modal">
+      <span class="close" onclick="toggleLeaderboardModal()">&times;</span>
+      <h3>🏆 Leaderboard</h3>
+      <p class="leaderboard-subtitle">Ranked by Completion %</p>
+      <ul id="leaderboardList"></ul>
+    </div>
+  </div>
+  
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="toggleSettingsModal()">&times;</span>
+      <h3>Settings</h3>
+      
+      <!-- Player Profile Section -->
+      <div class="profile-section">
+        <h4>👤 Player Profile</h4>
+        <p>Name: <span id="playerNameDisplay"></span> <button onclick="changePlayerName()" class="small-btn">Edit</button></p>
+        <div class="completion-display">
+          <h5>Overall Completion</h5>
+          <div class="completion-percent-big"><span id="completionPercent">0%</span></div>
+          <div id="completionBreakdown"></div>
+        </div>
+      </div>
+      <hr />
+      
+      <!-- Achievements Section -->
+      <div class="achievements-section">
+        <h4>🏅 Achievements</h4>
+        <ul id="achievementsList"></ul>
+      </div>
+      <hr />
+      
+      <!-- Shop Upgrades Section -->
+      <div class="shop-section">
+        <h4>🛒 Shop Upgrades</h4>
+        <p>Points: <span id="pointsDisplay">0</span></p>
+        <button id="autoClickerBtn" onclick="purchaseAutoClicker()">Buy Auto Clicker (100 pts)</button>
+        <button id="doublePointsBtn" onclick="purchaseDoublePoints()">Buy Double Points (200 pts)</button>
+        <button id="goldenClickBtn" onclick="purchaseGoldenClick()">Buy Golden Click (400 pts)</button>
+        <button id="luckBoostBtn" onclick="purchaseLuckBoost()">Buy Luck Boost (500 pts)</button>
+        <button id="timeFreezeBtn" onclick="purchaseTimeFreeze()">Buy Time Freeze (250 pts)</button>
+        <button id="goldenModeBtn" onclick="purchaseGoldenMode()">Buy Golden Mode (2000 pts)</button>
+        <p>Auto Clickers: <span id="autoCount">0</span></p>
+        <p>Double Points: <span id="doubleStatus">Off</span></p>
+        <p>Golden Click: <span id="goldenStatus">Not Ready</span></p>
+        <p>Luck Boost: <span id="luckBoostStatus">Inactive</span></p>
+        <p>Time Freeze: <span id="timeFreezeStatus">Inactive</span></p>
+        <p>Golden Mode: <span id="goldenModeStatus">Inactive</span></p>
+      </div>
+      
+      <!-- Upstage Button (appears if every rarity up to "Ultra Legendary" is unlocked) -->
+      <button id="upstageButton" onclick="upstageGame()" style="display: none; background: orange;">UPSTAGE?</button>
+      <hr />
+      
+      <!-- Background Shop Section -->
+      <div class="background-shop-section">
+        <h4>🎨 Background Shop</h4>
+        <ul id="backgroundShopList"></ul>
+      </div>
+      <hr />
+      
+      <!-- Stats for Nerds Section -->
+      <div class="stats-section">
+        <h4>📊 Stats for Nerds</h4>
+        <p>Total Clicks: <span id="totalClicks">0</span></p>
+        <p>Rarest Find: <span id="rarestFind">None</span></p>
+        <div>
+          <h5>Rarity Chances:</h5>
+          <ul id="chancesList"></ul>
+        </div>
+        <p id="masteryMedals">Mastery Medals: </p>
+      </div>
+      <hr />
+      <button id="resetButton" onclick="resetGame()">RESET</button>
+    </div>
+  </div>
+  
+  <!-- Daily Panel (Streak & Challenges) -->
+  <div id="dailyPanel" class="daily-panel">
+    <div class="daily-streak" onclick="toggleStreakModal()">
+      <span class="streak-icon">🔥</span>
+      <span id="streakCount">0</span>
+    </div>
+    <div class="daily-challenges-btn" onclick="toggleChallengesModal()">
+      <span>📋</span>
+      <span id="challengesProgress">0/3</span>
+    </div>
+  </div>
+
+  <!-- Streak Modal -->
+  <div id="streakModal" class="modal">
+    <div class="modal-content streak-modal">
+      <span class="close" onclick="toggleStreakModal()">&times;</span>
+      <h3>🔥 Daily Streak</h3>
+      <div class="streak-display">
+        <div class="streak-number" id="currentStreak">0</div>
+        <div class="streak-label">Day Streak</div>
+      </div>
+      <div class="streak-info">
+        <p>Longest Streak: <span id="longestStreak">0</span> days</p>
+        <p>Total Claims: <span id="totalClaims">0</span></p>
+      </div>
+      <button id="claimStreakBtn" onclick="claimDailyStreak()" class="claim-btn">Claim Daily Reward!</button>
+      <div class="streak-milestones">
+        <h4>Upcoming Rewards</h4>
+        <ul id="milestonesList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Challenges Modal -->
+  <div id="challengesModal" class="modal">
+    <div class="modal-content challenges-modal">
+      <span class="close" onclick="toggleChallengesModal()">&times;</span>
+      <h3>📋 Daily Challenges</h3>
+      <p class="challenges-date" id="challengesDate">Loading...</p>
+      <ul id="challengesList"></ul>
+      <button id="claimChallengesBtn" onclick="claimChallengesReward()" class="claim-btn" style="display:none;">
+        Claim Reward: Random Button Skin! 🎨
+      </button>
+    </div>
+  </div>
+
+  <!-- Skins Modal -->
+  <div id="skinsModal" class="modal">
+    <div class="modal-content skins-modal">
+      <span class="close" onclick="toggleSkinsModal()">&times;</span>
+      <h3>🎨 Button Skins</h3>
+      <div class="skins-grid" id="skinsGrid"></div>
+    </div>
+  </div>
+
+  <!-- Main Clickable Button -->
+  <button id="clickButton">Click Me!</button>
+  
+  <!-- Result Container -->
+  <div id="resultContainer">
+    <p id="result"></p>
+  </div>
+  
+  <!-- Log of Unique Finds -->
+  <h2>Log of Finds</h2>
+  <ul id="log"></ul>
+  
+  <!-- Load API client first, then game script -->
+  <script src="api-client.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
