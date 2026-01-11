@@ -14,35 +14,47 @@ body {
   margin-bottom: 20px;
 }
 
-#timer {
-  font-size: 24px;
-  margin:  10px;
+#headerIcons {
+  display: flex;
+  gap: 15px;
 }
 
-#settingsIcon {
-  font-size: 32px;
-  cursor: pointer;
+#timer {
+  font-size: 24px;
   margin: 10px;
 }
 
+#settingsIcon,
+#leaderboardIcon {
+  font-size: 32px;
+  cursor: pointer;
+  margin: 10px;
+  transition: transform 0.2s;
+}
+
+#settingsIcon:hover,
+#leaderboardIcon:hover {
+  transform: scale(1.1);
+}
+
 /* Modal Styles */
-. modal {
+.modal {
   display: none;
   position: fixed;
-  z-index:  2000;
+  z-index: 2000;
   left: 0;
   top: 0;
-  width:  100%;
+  width: 100%;
   height: 100%;
   overflow: auto;
   background-color: rgba(0,0,0,0.4);
 }
 
 .modal-content {
-  background-color:  #fefefe;
+  background-color: #fefefe;
   margin: 5% auto;
   padding: 20px;
-  border:  1px solid #888;
+  border: 1px solid #888;
   border-radius: 10px;
   max-width: 500px;
   max-height: 80vh;
@@ -51,11 +63,15 @@ body {
   position: relative;
 }
 
+.leaderboard-modal {
+  max-width: 400px;
+}
+
 .close {
   color: #aaa;
   position: absolute;
   top: 10px;
-  right:  20px;
+  right: 20px;
   font-size: 28px;
   font-weight: bold;
   cursor: pointer;
@@ -63,7 +79,233 @@ body {
 
 .close:hover,
 .close:focus {
-  color:  black;
+  color: black;
+}
+
+/* Leaderboard Styles */
+.leaderboard-subtitle {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 15px;
+}
+
+#leaderboardList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.leaderboard-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  margin: 5px 0;
+  background: linear-gradient(135deg, #f5f5f5, #e0e0e0);
+  border-radius: 8px;
+  transition: transform 0.2s;
+}
+
+.leaderboard-entry:hover {
+  transform: scale(1.02);
+}
+
+.leaderboard-self {
+  background: linear-gradient(135deg, #fff9c4, #ffecb3);
+  border: 2px solid #ffd700;
+}
+
+.leaderboard-rank {
+  font-size: 20px;
+  min-width: 40px;
+}
+
+.leaderboard-name {
+  flex: 1;
+  text-align: left;
+  margin-left: 10px;
+  font-weight: bold;
+}
+
+.leaderboard-percent {
+  font-size: 18px;
+  color: #4caf50;
+  font-weight: bold;
+}
+
+.leaderboard-empty {
+  color: #999;
+  font-style: italic;
+  padding: 20px;
+}
+
+/* Player Profile Section */
+.profile-section {
+  text-align: left;
+  margin: 10px 0;
+}
+
+.small-btn {
+  font-size: 12px;
+  padding: 3px 8px;
+  margin-left: 5px;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.small-btn:hover {
+  background: #1976d2;
+}
+
+.completion-display {
+  margin-top: 15px;
+  text-align: center;
+}
+
+.completion-percent-big {
+  font-size: 48px;
+  font-weight: bold;
+  color: #4caf50;
+  margin: 10px 0;
+}
+
+#completionBreakdown {
+  text-align: left;
+  margin-top: 15px;
+}
+
+.breakdown-item {
+  margin: 10px 0;
+}
+
+.breakdown-label {
+  display: block;
+  font-size: 14px;
+  color: #666;
+}
+
+.breakdown-value {
+  font-weight: bold;
+  float: right;
+  margin-top: -20px;
+}
+
+.breakdown-bar {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.breakdown-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #8bc34a);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Achievements Section */
+.achievements-section {
+  text-align: left;
+  margin: 10px 0;
+}
+
+#achievementsList {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.achievement-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.achievement-item.unlocked {
+  background: linear-gradient(135deg, #fff9c4, #ffecb3);
+  border: 1px solid #ffd700;
+}
+
+.achievement-item.locked {
+  background: #e0e0e0;
+  color: #999;
+}
+
+.ach-icon {
+  font-size: 18px;
+}
+
+.ach-name {
+  font-weight: bold;
+}
+
+/* Achievement Popup Toast */
+.achievement-popup {
+  position: fixed;
+  top: 20px;
+  right: -400px;
+  width: 320px;
+  background: linear-gradient(135deg, #fff9c4, #ffecb3);
+  border: 3px solid #ffd700;
+  border-radius: 15px;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  z-index: 3000;
+  transition: right 0.5s ease-out;
+}
+
+.achievement-popup.show {
+  right: 20px;
+}
+
+.achievement-popup.hide {
+  right: -400px;
+}
+
+.achievement-icon {
+  font-size: 48px;
+  animation: bounce 0.5s ease infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.achievement-content {
+  flex: 1;
+}
+
+.achievement-title {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.achievement-name {
+  font-size: 20px;
+  font-weight: bold;
+  color: #333;
+  margin: 3px 0;
+}
+
+.achievement-desc {
+  font-size: 14px;
+  color: #666;
 }
 
 /* Shop Upgrade Buttons */
@@ -78,10 +320,10 @@ button {
 }
 
 #autoClickerBtn {
-  background:  linear-gradient(145deg, #e53935, #d32f2f);
+  background: linear-gradient(145deg, #e53935, #d32f2f);
   color: white;
 }
-#autoClickerBtn: hover {
+#autoClickerBtn:hover {
   transform: scale(1.05);
   box-shadow: 0 8px 15px rgba(0,0,0,0.2);
 }
@@ -91,15 +333,15 @@ button {
   color: white;
 }
 #doublePointsBtn:hover {
-  transform:  scale(1.05);
+  transform: scale(1.05);
   box-shadow: 0 8px 15px rgba(0,0,0,0.2);
 }
 
 #goldenClickBtn {
-  background:  linear-gradient(145deg, #ffeb3b, #fbc02d);
+  background: linear-gradient(145deg, #ffeb3b, #fbc02d);
   color: black;
 }
-#goldenClickBtn: hover {
+#goldenClickBtn:hover {
   transform: scale(1.05);
   box-shadow: 0 8px 15px rgba(0,0,0,0.2);
 }
@@ -123,7 +365,7 @@ button {
 }
 
 #goldenModeBtn {
-  background:  linear-gradient(145deg, #ffb300, #ffa000);
+  background: linear-gradient(145deg, #ffb300, #ffa000);
   color: black;
 }
 #goldenModeBtn:hover {
@@ -144,11 +386,11 @@ button {
   margin-bottom: 20px;
 }
 #clickButton:hover {
-  transform:  scale(1.05);
+  transform: scale(1.05);
   box-shadow: 0 12px 20px rgba(0,0,0,0.15);
 }
 #clickButton:active {
-  transform:  scale(0.98);
+  transform: scale(0.98);
 }
 
 /* Result Container */
@@ -165,43 +407,43 @@ button {
 
 /* Rarity Color Classes */
 .average { background-color: #a0a0a0; color: white; }
-.common { background-color:  #808080; color: white; }
+.common { background-color: #808080; color: white; }
 .uncommon { background-color: #90ee90; color: black; }
-.slightly-rare { background-color:  #87ceeb; color:  black; }
-.rare { background-color:  #add8e6; color: black; }
+.slightly-rare { background-color: #87ceeb; color: black; }
+.rare { background-color: #add8e6; color: black; }
 .more-rare { background-color: #6eb5ff; color: black; }
 .very-rare { background-color: #4a90d9; color: white; }
 .super-rare { background-color: blue; color: white; }
 .ultra-rare { background-color: #00008b; color: white; }
-.epic { background-color:  #e6e6fa; color: black; }
-.more-epic { background-color: #dda0dd; color:  black; }
-. very-epic { background-color: #ba55d3; color:  white; }
-. super-epic { background-color: #9932cc; color: white; }
+.epic { background-color: #e6e6fa; color: black; }
+.more-epic { background-color: #dda0dd; color: black; }
+.very-epic { background-color: #ba55d3; color: white; }
+.super-epic { background-color: #9932cc; color: white; }
 .ultra-epic { background-color: #800080; color: white; }
-.legendary { background-color:  yellow; color: black; }
-.legendary-plus { background-color:  #ffd700; color: black; }
+.legendary { background-color: yellow; color: black; }
+.legendary-plus { background-color: #ffd700; color: black; }
 .super-legendary { background-color: #ffb347; color: black; }
-.ultra-legendary { background-color: #ff8c00; color:  white; }
-. mythical { background-color:  red; color: white; }
+.ultra-legendary { background-color: #ff8c00; color: white; }
+.mythical { background-color: red; color: white; }
 .ultra-mythical { background-color: #8b0000; color: white; }
-.chroma { background:  linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet); color: white; }
+.chroma { background: linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet); color: white; }
 .super-chroma { background: linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet); color: white; }
 .ultra-chroma { background: linear-gradient(135deg, red, orange, yellow, green, blue, indigo, violet); color: white; text-shadow: 1px 1px 2px black; }
-.magical { background:  linear-gradient(135deg, #ff69b4, #8a2be2); color: white; }
-.super-magical { background:  linear-gradient(135deg, #ff1493, #9400d3); color: white; }
-. ultra-magical { background: linear-gradient(135deg, #c71585, #4b0082); color: white; }
-. extreme { background: linear-gradient(135deg, #ff4500, #ff0000); color: white; }
-. ultra-extreme { background:  linear-gradient(135deg, #8b0000, #ff0000, #8b0000); color: white; }
+.magical { background: linear-gradient(135deg, #ff69b4, #8a2be2); color: white; }
+.super-magical { background: linear-gradient(135deg, #ff1493, #9400d3); color: white; }
+.ultra-magical { background: linear-gradient(135deg, #c71585, #4b0082); color: white; }
+.extreme { background: linear-gradient(135deg, #ff4500, #ff0000); color: white; }
+.ultra-extreme { background: linear-gradient(135deg, #8b0000, #ff0000, #8b0000); color: white; }
 .ethereal { background-color: #2e0854; color: #e0b0ff; }
-.ultra-ethereal { background:  linear-gradient(135deg, #1a0033, #4b0082, #1a0033); color: #e0b0ff; }
-.stellar { background:  linear-gradient(135deg, #0c0c0c, #1a1a2e, #4a4a6a); color: #ffd700; }
-.ultra-stellar { background:  linear-gradient(135deg, #000000, #191970, #000000); color: #ffd700; text-shadow: 0 0 10px #ffd700; }
-.extraordinary { background:  linear-gradient(135deg, #ffa500, #ff4500, #ffd700); color: white; text-shadow: 1px 1px 2px black; }
+.ultra-ethereal { background: linear-gradient(135deg, #1a0033, #4b0082, #1a0033); color: #e0b0ff; }
+.stellar { background: linear-gradient(135deg, #0c0c0c, #1a1a2e, #4a4a6a); color: #ffd700; }
+.ultra-stellar { background: linear-gradient(135deg, #000000, #191970, #000000); color: #ffd700; text-shadow: 0 0 10px #ffd700; }
+.extraordinary { background: linear-gradient(135deg, #ffa500, #ff4500, #ffd700); color: white; text-shadow: 1px 1px 2px black; }
 .ultra-extraordinary { background: linear-gradient(135deg, #ff6347, #ff4500, #ffa500, #ff4500, #ff6347); color: white; text-shadow: 1px 1px 3px black; }
 .unknown { background-color: black; color: white; }
 .glitched { 
-  background:  linear-gradient(45deg, #00ff00, #008000, #00ff00); 
-  color:  white; 
+  background: linear-gradient(45deg, #00ff00, #008000, #00ff00); 
+  color: white; 
   text-shadow: 2px 2px 4px black;
   animation: glitch 0.3s infinite;
 }
@@ -209,7 +451,7 @@ button {
 @keyframes glitch {
   0% { transform: translate(0); }
   25% { transform: translate(-2px, 2px); }
-  50% { transform:  translate(2px, -2px); }
+  50% { transform: translate(2px, -2px); }
   75% { transform: translate(-2px, -2px); }
   100% { transform: translate(0); }
 }
@@ -229,17 +471,17 @@ button {
 }
 
 /* Background Shop Section */
-. background-shop-section {
+.background-shop-section {
   text-align: left;
   margin: 10px 0;
 }
 #backgroundShopList {
-  list-style-type:  none;
+  list-style-type: none;
   padding: 0;
   margin-top: 10px;
 }
 #backgroundShopList li {
-  margin:  10px 0;
+  margin: 10px 0;
   padding: 10px;
   border-radius: 5px;
   position: relative;
@@ -272,33 +514,61 @@ button {
 }
 
 /* Stats Section */
-. stats-section {
-  text-align:  left;
-  margin:  10px 0;
+.stats-section {
+  text-align: left;
+  margin: 10px 0;
 }
-. stats-section h5 {
+.stats-section h5 {
   margin-bottom: 5px;
 }
 .stats-section ul {
-  list-style-type:  none;
-  padding:  0;
+  list-style-type: none;
+  padding: 0;
   max-height: 200px;
   overflow-y: auto;
 }
 
+/* Shop Section */
+.shop-section {
+  text-align: left;
+  margin: 10px 0;
+}
+
 /* RESET Button */
 #resetButton {
-  background:  #ff4d4d;
-  color:  white;
+  background: #ff4d4d;
+  color: white;
   font-size: 18px;
   padding: 10px 20px;
-  margin:  10px;
+  margin: 10px;
   border: none;
   border-radius: 10px;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
 }
+
 #resetButton:hover {
   transform: scale(1.05);
-  box-shadow:  0 8px 15px rgba(0,0,0,0.2);
+  box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .achievement-popup {
+    width: 280px;
+    right: -300px;
+  }
+  
+  .achievement-popup.show {
+    right: 10px;
+  }
+  
+  .modal-content {
+    margin: 10% auto;
+    max-width: 95%;
+  }
+  
+  .completion-percent-big {
+    font-size: 36px;
+  }
 }
