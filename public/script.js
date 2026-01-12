@@ -13,9 +13,13 @@ let upstageCount = localStorage.getItem("upstageCount") ? parseInt(localStorage.
 
 // Player identification for leaderboard
 let playerId = localStorage.getItem("playerId") || generatePlayerId();
-let playerName = localStorage.getItem("playerName") || "Player_" + playerId.substring(0, 6);
+let playerName = localStorage.getItem("playerName") || generatePlayerName();
 localStorage.setItem("playerId", playerId);
 localStorage.setItem("playerName", playerName);
+
+// Offline mode tracking
+let isGameOnline = true;
+let connectionCheckInterval = null;
 
 // Achievements system
 let unlockedAchievements = JSON.parse(localStorage.getItem("unlockedAchievements")) || [];
@@ -230,6 +234,16 @@ function generatePlayerId() {
   return 'player_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
 }
 
+function generatePlayerName() {
+  // Generate fun random names
+  const adjectives = ['Swift', 'Lucky', 'Rare', 'Epic', 'Cosmic', 'Stellar', 'Mighty', 'Mystic', 'Golden', 'Crystal'];
+  const nouns = ['Hunter', 'Seeker', 'Finder', 'Explorer', 'Legend', 'Master', 'Champion', 'Voyager', 'Dreamer', 'Wizard'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 999);
+  return `${adj}${noun}${num}`;
+}
+
 function calculateCompletionPercentage() {
   // Weight distribution for completion:
   // - Rarities: 50% (most important)
@@ -341,60 +355,51 @@ function showAchievementPopup(achievement) {
 }
 
 /******** Leaderboard Functions ********/
-function updateLeaderboard() {
-  const now = Date.now();
-  if (now - lastLeaderboardUpdate < LEADERBOARD_UPDATE_INTERVAL) return;
-  
-  lastLeaderboardUpdate = now;
-  
-  const playerData = {
-    id: playerId,
-    name: playerName,
-    percent: calculateCompletionPercentage(),
-    timestamp: now
-  };
-  
-  // Update or add player data
-  const existingIndex = leaderboardData.findIndex(p => p.id === playerId);
-  if (existingIndex >= 0) {
-    leaderboardData[existingIndex] = playerData;
-  } else {
-    leaderboardData.push(playerData);
+async function updateLeaderboard() {
+  // Try to sync with server first
+  if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
+    await syncToServer();
   }
-  
-  // Sort by percentage (descending), then by timestamp (earlier = higher rank for ties)
-  leaderboardData.sort((a, b) => {
-    if (b.percent !== a.percent) return b.percent - a.percent;
-    return a.timestamp - b.timestamp;
-  });
-  
-  // Keep only top 100
-  leaderboardData = leaderboardData.slice(0, 100);
-  
-  localStorage.setItem("leaderboardData", JSON.stringify(leaderboardData));
 }
 
-function getLeaderboard() {
+async function getLeaderboard() {
+  // Try to get from server
+  if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
+    try {
+      const data = await BeyondRareAPI.getLeaderboard('all-time', 100);
+      if (data.success && data.leaderboard) {
+        return data.leaderboard;
+      }
+    } catch (error) {
+      console.error('Failed to fetch leaderboard:', error);
+    }
+  }
+  
+  // Fallback to local data
   return leaderboardData;
 }
 
-function displayLeaderboard() {
+async function displayLeaderboard() {
   const leaderboardList = document.getElementById("leaderboardList");
   if (!leaderboardList) return;
   
+  leaderboardList.innerHTML = "<li class='loading'>Loading leaderboard...</li>";
+  
+  const data = await getLeaderboard();
+  
   leaderboardList.innerHTML = "";
   
-  const data = getLeaderboard();
-  
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     leaderboardList.innerHTML = "<li class='leaderboard-empty'>No players yet. Keep playing!</li>";
     return;
   }
   
+  const serverPlayerId = typeof BeyondRareAPI !== 'undefined' ? BeyondRareAPI.getPlayerId() : playerId;
+  
   data.forEach((player, index) => {
     const li = document.createElement("li");
     li.className = "leaderboard-entry";
-    if (player.id === playerId) {
+    if (player.id === serverPlayerId || player.playerId === serverPlayerId) {
       li.classList.add("leaderboard-self");
     }
     
@@ -406,8 +411,8 @@ function displayLeaderboard() {
     
     li.innerHTML = `
       <span class="leaderboard-rank">${rankIcon}</span>
-      <span class="leaderboard-name">${escapeHtml(player.name)}</span>
-      <span class="leaderboard-percent">${player.percent.toFixed(1)}%</span>
+      <span class="leaderboard-name">${escapeHtml(player.name || player.username || 'Unknown')}</span>
+      <span class="leaderboard-percent">${(player.percent || player.completionPercent || 0).toFixed(1)}%</span>
     `;
     
     leaderboardList.appendChild(li);
@@ -416,24 +421,31 @@ function displayLeaderboard() {
 
 function escapeHtml(text) {
   const div = document.createElement("div");
-  div.textContent = text;
+  div.textContent = text || '';
   return div.innerHTML;
 }
 
-function changePlayerName() {
+async function changePlayerName() {
   const newName = prompt("Enter your new name (max 20 characters):", playerName);
   if (newName && newName.trim().length > 0) {
-    playerName = newName.trim().substring(0, 20);
+    const cleanName = newName.trim().substring(0, 20);
+    playerName = cleanName;
     localStorage.setItem("playerName", playerName);
-    updateLeaderboard();
-    displayLeaderboard();
+    
+    // Update on server too
+    if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
+      await BeyondRareAPI.updateUsername(cleanName);
+    }
+    
+    document.getElementById("playerNameDisplay").textContent = playerName;
     updateStats();
   }
 }
 
 /******** Timer Update (every 100ms) ********/
 function updateTimer() {
-  if (!timeFreezeActive) {
+  // Stop timer when offline or time frozen
+  if (!timeFreezeActive && isGameOnline) {
     const now = Date.now();
     const secondsElapsed = ((now - startTime) / 1000).toFixed(1);
     document.getElementById("timer").innerText = "Time: " + secondsElapsed + "s";
@@ -444,20 +456,59 @@ setInterval(updateTimer, 100);
 
 /******** Display Update Functions ********/
 function updateShopDisplays() {
-  document.getElementById("pointsDisplay").innerText = points;
-  document.getElementById("autoCount").innerText = autoClickersCount;
-  document.getElementById("doubleStatus").innerText = doublePointsActive ? "On" : "Off";
-  document.getElementById("goldenStatus").innerText = goldenClickReady ? "Ready" : "Not Ready";
-  document.getElementById("luckBoostStatus").innerText = luckBoostActive ? "Active" : "Inactive";
-  document.getElementById("timeFreezeStatus").innerText = timeFreezeActive ? "Active" : "Inactive";
-  document.getElementById("goldenModeStatus").innerText = goldenModeActive ? "Active" : "Inactive";
+  // Update points in both settings and shop modal
+  const pointsDisplay = document.getElementById("pointsDisplay");
+  const shopPointsDisplay = document.getElementById("shopPointsDisplay");
+  if (pointsDisplay) pointsDisplay.innerText = points;
+  if (shopPointsDisplay) shopPointsDisplay.innerText = points;
   
-  document.getElementById("autoClickerBtn").innerText = "Buy Auto Clicker (" + Math.round(SHOP_PRICES.autoClicker * shopPriceMultiplier) + " pts)";
-  document.getElementById("doublePointsBtn").innerText = "Buy Double Points (" + Math.round(SHOP_PRICES.doublePoints * shopPriceMultiplier) + " pts)";
-  document.getElementById("goldenClickBtn").innerText = "Buy Golden Click (" + Math.round(SHOP_PRICES.goldenClick * shopPriceMultiplier) + " pts)";
-  document.getElementById("luckBoostBtn").innerText = "Buy Luck Boost (" + Math.round(SHOP_PRICES.luckBoost * shopPriceMultiplier) + " pts)";
-  document.getElementById("timeFreezeBtn").innerText = "Buy Time Freeze (" + Math.round(SHOP_PRICES.timeFreeze * shopPriceMultiplier) + " pts)";
-  document.getElementById("goldenModeBtn").innerText = "Buy Golden Mode (" + Math.round(SHOP_PRICES.goldenMode * shopPriceMultiplier) + " pts)";
+  // Update auto clicker display with count and speed
+  const autoCountElem = document.getElementById("autoCount");
+  const shopAutoCount = document.getElementById("shopAutoCount");
+  const autoDisplayText = autoClickersCount > 0 
+    ? `${autoClickersCount} (${(getAutoClickerInterval()/1000).toFixed(1)}s)` 
+    : "0";
+  
+  if (autoCountElem) {
+    if (autoClickersCount > 0) {
+      autoCountElem.innerHTML = `${autoClickersCount} <span class="auto-speed">(${(getAutoClickerInterval()/1000).toFixed(1)}s)</span>`;
+    } else {
+      autoCountElem.innerText = "0";
+    }
+  }
+  if (shopAutoCount) shopAutoCount.innerText = autoDisplayText;
+  
+  // Update shop modal status displays
+  const updateElement = (id, value) => {
+    const elem = document.getElementById(id);
+    if (elem) elem.innerText = value;
+  };
+  
+  updateElement("shopDoubleStatus", doublePointsActive ? "On" : "Off");
+  updateElement("shopGoldenStatus", goldenClickReady ? "Ready" : "Not Ready");
+  updateElement("shopLuckBoostStatus", luckBoostActive ? "Active" : "Inactive");
+  updateElement("shopTimeFreezeStatus", timeFreezeActive ? "Active" : "Inactive");
+  updateElement("shopGoldenModeStatus", goldenModeActive ? "Active" : "Inactive");
+  
+  // Update shop button prices
+  const updateBtn = (id, name, price) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      const priceSpan = btn.querySelector('.shop-item-price');
+      if (priceSpan) {
+        priceSpan.innerText = Math.round(price * shopPriceMultiplier) + " pts";
+      } else {
+        btn.innerText = `Buy ${name} (${Math.round(price * shopPriceMultiplier)} pts)`;
+      }
+    }
+  };
+  
+  updateBtn("autoClickerBtn", "Auto Clicker", SHOP_PRICES.autoClicker);
+  updateBtn("doublePointsBtn", "Double Points", SHOP_PRICES.doublePoints);
+  updateBtn("goldenClickBtn", "Golden Click", SHOP_PRICES.goldenClick);
+  updateBtn("luckBoostBtn", "Luck Boost", SHOP_PRICES.luckBoost);
+  updateBtn("timeFreezeBtn", "Time Freeze", SHOP_PRICES.timeFreeze);
+  updateBtn("goldenModeBtn", "Golden Mode", SHOP_PRICES.goldenMode);
 }
 
 function updateLogElement() {
@@ -693,21 +744,49 @@ function generateRarity(isManual = true) {
 }
 
 /******** Auto Clicker Functions ********/
+const AUTO_CLICKER_BASE_INTERVAL = 2000; // Base: 2 seconds
+
+function getAutoClickerInterval() {
+  // Speed scales with count: more clickers = faster interval
+  // Formula: interval = baseInterval / (1 + 0.5 * (count - 1))
+  // At 1 clicker: 2000ms, at 2: 1333ms, at 3: 1000ms, at 5: 667ms, at 10: 400ms
+  if (autoClickersCount <= 1) return AUTO_CLICKER_BASE_INTERVAL;
+  return Math.max(200, Math.floor(AUTO_CLICKER_BASE_INTERVAL / (1 + 0.5 * (autoClickersCount - 1))));
+}
+
 function startAutoClickers() {
+  if (!isGameOnline) return; // Don't run auto clickers when offline
+  
   if (autoClickersCount > 0 && !autoInterval && !timeFreezeActive) {
-    autoInterval = setInterval(() => {
-      for (let i = 0; i < autoClickersCount; i++) {
-        generateRarity(false);
-      }
-    }, 2000);
+    runAutoClicker();
   }
+}
+
+function runAutoClicker() {
+  if (!isGameOnline || autoClickersCount <= 0 || timeFreezeActive) {
+    stopAutoClickers();
+    return;
+  }
+  
+  // Run auto clicks
+  generateRarity(false);
+  
+  // Schedule next run with dynamic interval
+  autoInterval = setTimeout(() => {
+    runAutoClicker();
+  }, getAutoClickerInterval());
 }
 
 function stopAutoClickers() {
   if (autoInterval) {
-    clearInterval(autoInterval);
+    clearTimeout(autoInterval);
     autoInterval = null;
   }
+}
+
+function restartAutoClickers() {
+  stopAutoClickers();
+  startAutoClickers();
 }
 
 /******** Shop Purchase Functions ********/
@@ -721,7 +800,7 @@ function purchaseAutoClicker() {
     purchasedShopItems["autoClicker"] = true;
     localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
     updateShopDisplays();
-    startAutoClickers();
+    restartAutoClickers(); // Restart with new speed
     checkAchievements();
   } else {
     alert("Not enough pts for Auto Clicker!");
@@ -1074,7 +1153,38 @@ function logHasRarity(requiredRarity) {
   return logData.includes(requiredRarity);
 }
 
+/******** Modal Close on Outside Click ********/
+function setupModalCloseOnOutsideClick() {
+  const modals = document.querySelectorAll('.modal');
+  
+  modals.forEach(modal => {
+    modal.addEventListener('click', (e) => {
+      // Only close if clicking the modal backdrop (not the content)
+      if (e.target === modal) {
+        modal.style.display = 'none';
+      }
+    });
+  });
+  
+  // Also close modals with Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      modals.forEach(modal => {
+        if (modal.style.display === 'block') {
+          modal.style.display = 'none';
+        }
+      });
+    }
+  });
+}
+
 /******** Modal & Reset Functions ********/
+function toggleShopModal() {
+  const modal = document.getElementById("shopModal");
+  modal.style.display = (modal.style.display === "block") ? "none" : "block";
+  updateShopDisplays();
+}
+
 function toggleSettingsModal() {
   const modal = document.getElementById("settingsModal");
   modal.style.display = (modal.style.display === "block") ? "none" : "block";
@@ -1174,24 +1284,16 @@ function upstageGame() {
 
 /******** Initialization ********/
 function init() {
-  // Add demo leaderboard data if empty (for demonstration)
-  if (leaderboardData.length === 0) {
-    leaderboardData = [
-      { id: "demo_1", name: "RarityMaster", percent: 87.5, timestamp: Date.now() - 86400000 },
-      { id: "demo_2", name: "ClickerPro", percent: 72.3, timestamp: Date.now() - 172800000 },
-      { id: "demo_3", name: "GlitchHunter", percent: 65.1, timestamp: Date.now() - 259200000 },
-      { id: "demo_4", name: "BeyondRare", percent: 54.8, timestamp: Date.now() - 345600000 },
-      { id: "demo_5", name: "LegendSeeker", percent: 41.2, timestamp: Date.now() - 432000000 }
-    ];
-    localStorage.setItem("leaderboardData", JSON.stringify(leaderboardData));
-  }
+  // Set up player name display
+  document.getElementById("playerNameDisplay").textContent = playerName;
   
   updateShopDisplays();
   updateLogElement();
   updateStats();
   restoreBackground();
-  startAutoClickers();
-  checkAchievements();
+  
+  // Set up modal close on outside click
+  setupModalCloseOnOutsideClick();
   
   // Initialize server connection
   initServerConnection();
@@ -1202,13 +1304,13 @@ async function initServerConnection() {
   // Check if API is available
   if (typeof BeyondRareAPI === 'undefined') {
     console.log('API client not loaded, running in offline mode');
-    updateConnectionStatus(false);
+    setOfflineMode(true);
     return;
   }
   
   try {
     const health = await BeyondRareAPI.checkHealth();
-    updateConnectionStatus(health.success);
+    setOfflineMode(!health.success);
     
     if (health.success) {
       // Sync local progress to server
@@ -1220,8 +1322,87 @@ async function initServerConnection() {
     }
   } catch (error) {
     console.log('Server not available, running in offline mode');
-    updateConnectionStatus(false);
+    setOfflineMode(true);
   }
+  
+  // Set up periodic connection checks
+  startConnectionMonitoring();
+}
+
+function startConnectionMonitoring() {
+  if (connectionCheckInterval) clearInterval(connectionCheckInterval);
+  
+  connectionCheckInterval = setInterval(async () => {
+    if (typeof BeyondRareAPI === 'undefined') return;
+    
+    try {
+      const health = await BeyondRareAPI.checkHealth();
+      const wasOffline = !isGameOnline;
+      setOfflineMode(!health.success);
+      
+      // If we just came back online, sync and reload data
+      if (wasOffline && health.success) {
+        await syncToServer();
+        await loadStreak();
+        await loadChallenges();
+      }
+    } catch (error) {
+      setOfflineMode(true);
+    }
+  }, 10000); // Check every 10 seconds
+}
+
+function setOfflineMode(offline) {
+  const wasOnline = isGameOnline;
+  isGameOnline = !offline;
+  
+  updateConnectionStatus(!offline);
+  
+  if (offline) {
+    // Stop game functionality
+    stopAutoClickers();
+    showOfflinePopup();
+  } else if (!wasOnline) {
+    // Resuming from offline
+    hideOfflinePopup();
+    startAutoClickers();
+  } else {
+    // Already online, just start normally
+    startAutoClickers();
+  }
+}
+
+function showOfflinePopup() {
+  let popup = document.getElementById('offlinePopup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'offlinePopup';
+    popup.className = 'offline-popup';
+    popup.innerHTML = `
+      <div class="offline-popup-content">
+        <div class="offline-icon">📡</div>
+        <h3>Connection Lost</h3>
+        <p>Internet connection is required to play Beyond Rare.</p>
+        <p class="offline-subtext">Waiting for connection...</p>
+        <div class="offline-spinner"></div>
+      </div>
+    `;
+    document.body.appendChild(popup);
+  }
+  popup.style.display = 'flex';
+  
+  // Disable click button
+  const clickBtn = document.getElementById('clickButton');
+  if (clickBtn) clickBtn.disabled = true;
+}
+
+function hideOfflinePopup() {
+  const popup = document.getElementById('offlinePopup');
+  if (popup) popup.style.display = 'none';
+  
+  // Re-enable click button
+  const clickBtn = document.getElementById('clickButton');
+  if (clickBtn) clickBtn.disabled = false;
 }
 
 function updateConnectionStatus(isOnline) {
@@ -1579,12 +1760,13 @@ function addSkinsButton() {
 
 /******** Main Click Button Event Listener ********/
 document.getElementById("clickButton").addEventListener("click", function() {
+  // Block clicks when offline
+  if (!isGameOnline) {
+    showOfflinePopup();
+    return;
+  }
   generateRarity(true);
 });
 
 // Initialize the game
 init();
-
-// Add skins button after DOM is ready
-setTimeout(addSkinsButton, 100);
-

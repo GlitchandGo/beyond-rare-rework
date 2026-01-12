@@ -104,16 +104,16 @@ module.exports = {
 
   // Daily challenges pool
   dailyChallenges: [
-    { id: 'earn_2000_points', name: 'Earn 2000 Points', target: 2000, type: 'points' },
-    { id: 'get_chroma_plus', name: 'Get anything Chroma+', target: 1, type: 'rarity_tier', tier: 'Chroma+' },
-    { id: 'get_25_rare_plus', name: 'Get 25 Rare+ Finds', target: 25, type: 'rarity_tier_count', tier: 'Rare+' },
-    { id: 'get_15_epic_plus', name: 'Get 15 Epic+ Finds', target: 15, type: 'rarity_tier_count', tier: 'Epic+' },
-    { id: 'get_8_legendary_plus', name: 'Get 8 Legendary+ Finds', target: 8, type: 'rarity_tier_count', tier: 'Legendary+' },
-    { id: 'manual_clicks_250', name: '250 Manual Clicks', target: 250, type: 'manual_clicks' },
-    { id: 'purchase_10_items', name: 'Purchase 10 Items', target: 10, type: 'purchases' },
-    { id: 'earn_300_in_60s', name: 'Earn 300 Points in 60 Seconds', target: 300, type: 'points_timed', timeWindow: 60 },
-    { id: 'make_daily_leaderboard', name: 'Make the Daily Leaderboard', target: 1, type: 'leaderboard' },
-    { id: 'purchase_golden_mode', name: 'Purchase Golden Mode', target: 1, type: 'golden_mode' }
+    { id: 'earn_2000_points', name: 'Earn 2000 Points', description: 'Accumulate 2000 points from finding rarities', target: 2000, type: 'points' },
+    { id: 'get_chroma_plus', name: 'Get anything Chroma+', description: 'Find any rarity of Chroma tier or above', target: 1, type: 'rarity_tier', tier: 'Chroma+' },
+    { id: 'get_25_rare_plus', name: 'Get 25 Rare+ Finds', description: 'Find 25 rarities of Rare tier or above', target: 25, type: 'rarity_tier_count', tier: 'Rare+' },
+    { id: 'get_15_epic_plus', name: 'Get 15 Epic+ Finds', description: 'Find 15 rarities of Epic tier or above', target: 15, type: 'rarity_tier_count', tier: 'Epic+' },
+    { id: 'get_8_legendary_plus', name: 'Get 8 Legendary+ Finds', description: 'Find 8 rarities of Legendary tier or above', target: 8, type: 'rarity_tier_count', tier: 'Legendary+' },
+    { id: 'manual_clicks_250', name: '250 Manual Clicks', description: 'Click the button 250 times manually', target: 250, type: 'manual_clicks' },
+    { id: 'purchase_10_items', name: 'Purchase 10 Items', description: 'Buy 10 items from the shop', target: 10, type: 'purchases' },
+    { id: 'earn_300_in_60s', name: 'Earn 300 Points in 60 Seconds', description: 'Earn 300 points within a 60 second window', target: 300, type: 'points_timed', timeWindow: 60 },
+    { id: 'make_daily_leaderboard', name: 'Make the Daily Leaderboard', description: 'Get a spot on the daily leaderboard', target: 1, type: 'leaderboard' },
+    { id: 'purchase_golden_mode', name: 'Purchase Golden Mode', description: 'Buy the Golden Mode upgrade from the shop', target: 1, type: 'golden_mode' }
   ],
 
   // Streak milestones with rewards

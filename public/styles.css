@@ -876,3 +876,251 @@ button {
   }
 }
 
+/* Shop Icon in Header */
+#shopIcon {
+  font-size: 32px;
+  cursor: pointer;
+  margin: 10px;
+  transition: transform 0.2s;
+}
+
+#shopIcon:hover {
+  transform: scale(1.1);
+}
+
+/* Shop Modal Styles */
+.shop-modal {
+  max-width: 550px;
+}
+
+.shop-points {
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  padding: 15px 25px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.points-label {
+  font-size: 16px;
+  color: #333;
+}
+
+.points-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #1a1a1a;
+}
+
+.shop-category {
+  margin: 20px 0;
+  text-align: left;
+}
+
+.shop-category h4 {
+  margin-bottom: 15px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #eee;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.shop-item-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 15px 10px;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.shop-item-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+  border-color: #007bff;
+}
+
+.shop-item-btn:active {
+  transform: translateY(0);
+}
+
+.shop-item-icon {
+  font-size: 28px;
+  margin-bottom: 5px;
+}
+
+.shop-item-name {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+}
+
+.shop-item-price {
+  font-size: 12px;
+  color: #007bff;
+  margin-top: 5px;
+}
+
+.upgrade-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.upgrade-status {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.upgrade-status span:last-child {
+  font-weight: bold;
+  color: #28a745;
+}
+
+.shop-link-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  margin: 5px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.shop-link-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Auto clicker speed display */
+.auto-speed {
+  font-size: 11px;
+  color: #28a745;
+  font-weight: normal;
+}
+
+/* Quick stats section in settings */
+.quick-stats-section {
+  text-align: left;
+  margin-bottom: 15px;
+}
+
+/* Offline Popup */
+.offline-popup {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 9999;
+  justify-content: center;
+  align-items: center;
+}
+
+.offline-popup-content {
+  background: white;
+  padding: 40px;
+  border-radius: 20px;
+  text-align: center;
+  max-width: 400px;
+  animation: popup-appear 0.3s ease-out;
+}
+
+@keyframes popup-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.offline-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.offline-popup-content h3 {
+  color: #c62828;
+  margin-bottom: 10px;
+}
+
+.offline-popup-content p {
+  color: #555;
+  margin-bottom: 15px;
+}
+
+.offline-subtext {
+  color: #888 !important;
+  font-size: 14px;
+}
+
+.offline-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #ddd;
+  border-top-color: #c62828;
+  border-radius: 50%;
+  margin: 15px auto 0;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Disabled click button when offline */
+#clickButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Loading state for leaderboard */
+.loading {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* Responsive shop */
+@media (max-width: 480px) {
+  .shop-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .upgrade-status-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .shop-modal {
+    max-width: 95%;
+  }
+}

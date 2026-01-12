@@ -9,12 +9,100 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Header: Timer, Leaderboard Icon and Settings Icon -->
+  <!-- Header: Timer, Shop, Leaderboard Icon and Settings Icon -->
   <div id="header">
     <div id="timer">Time: 0.0s</div>
     <div id="headerIcons">
-      <div id="leaderboardIcon" onclick="toggleLeaderboardModal()">🏆</div>
-      <div id="settingsIcon" onclick="toggleSettingsModal()">⚙️</div>
+      <div id="shopIcon" onclick="toggleShopModal()" title="Shop">🛒</div>
+      <div id="leaderboardIcon" onclick="toggleLeaderboardModal()" title="Leaderboard">🏆</div>
+      <div id="settingsIcon" onclick="toggleSettingsModal()" title="Settings">⚙️</div>
+    </div>
+  </div>
+  
+  <!-- Shop Modal (Separate from Settings) -->
+  <div id="shopModal" class="modal">
+    <div class="modal-content shop-modal">
+      <span class="close" onclick="toggleShopModal()">&times;</span>
+      <h3>🛒 Shop</h3>
+      <div class="shop-points">
+        <span class="points-label">Your Points:</span>
+        <span id="shopPointsDisplay" class="points-value">0</span>
+      </div>
+      
+      <!-- Power-ups Section -->
+      <div class="shop-category">
+        <h4>⚡ Power-ups</h4>
+        <div class="shop-grid">
+          <button id="autoClickerBtn" onclick="purchaseAutoClicker()" class="shop-item-btn">
+            <span class="shop-item-icon">🤖</span>
+            <span class="shop-item-name">Auto Clicker</span>
+            <span class="shop-item-price">100 pts</span>
+          </button>
+          <button id="doublePointsBtn" onclick="purchaseDoublePoints()" class="shop-item-btn">
+            <span class="shop-item-icon">✖️2</span>
+            <span class="shop-item-name">Double Points</span>
+            <span class="shop-item-price">200 pts</span>
+          </button>
+          <button id="goldenClickBtn" onclick="purchaseGoldenClick()" class="shop-item-btn">
+            <span class="shop-item-icon">✨</span>
+            <span class="shop-item-name">Golden Click</span>
+            <span class="shop-item-price">400 pts</span>
+          </button>
+          <button id="luckBoostBtn" onclick="purchaseLuckBoost()" class="shop-item-btn">
+            <span class="shop-item-icon">🍀</span>
+            <span class="shop-item-name">Luck Boost</span>
+            <span class="shop-item-price">500 pts</span>
+          </button>
+          <button id="timeFreezeBtn" onclick="purchaseTimeFreeze()" class="shop-item-btn">
+            <span class="shop-item-icon">❄️</span>
+            <span class="shop-item-name">Time Freeze</span>
+            <span class="shop-item-price">250 pts</span>
+          </button>
+          <button id="goldenModeBtn" onclick="purchaseGoldenMode()" class="shop-item-btn">
+            <span class="shop-item-icon">👑</span>
+            <span class="shop-item-name">Golden Mode</span>
+            <span class="shop-item-price">2000 pts</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Active Upgrades Status -->
+      <div class="shop-category">
+        <h4>📊 Active Upgrades</h4>
+        <div class="upgrade-status-grid">
+          <div class="upgrade-status">
+            <span>Auto Clickers:</span>
+            <span id="shopAutoCount">0</span>
+          </div>
+          <div class="upgrade-status">
+            <span>Double Points:</span>
+            <span id="shopDoubleStatus">Off</span>
+          </div>
+          <div class="upgrade-status">
+            <span>Golden Click:</span>
+            <span id="shopGoldenStatus">Not Ready</span>
+          </div>
+          <div class="upgrade-status">
+            <span>Luck Boost:</span>
+            <span id="shopLuckBoostStatus">Inactive</span>
+          </div>
+          <div class="upgrade-status">
+            <span>Time Freeze:</span>
+            <span id="shopTimeFreezeStatus">Inactive</span>
+          </div>
+          <div class="upgrade-status">
+            <span>Golden Mode:</span>
+            <span id="shopGoldenModeStatus">Inactive</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Background Shop Link -->
+      <div class="shop-category">
+        <h4>🎨 Customization</h4>
+        <button onclick="toggleShopModal(); toggleSkinsModal();" class="shop-link-btn">🎨 Button Skins</button>
+        <button onclick="toggleShopModal(); toggleSettingsModal();" class="shop-link-btn">🖼️ Backgrounds</button>
+      </div>
     </div>
   </div>
   
@@ -53,22 +141,12 @@
       </div>
       <hr />
       
-      <!-- Shop Upgrades Section -->
-      <div class="shop-section">
-        <h4>🛒 Shop Upgrades</h4>
+      <!-- Quick Stats Section (Shop moved to header) -->
+      <div class="quick-stats-section">
+        <h4>💰 Quick Stats</h4>
         <p>Points: <span id="pointsDisplay">0</span></p>
-        <button id="autoClickerBtn" onclick="purchaseAutoClicker()">Buy Auto Clicker (100 pts)</button>
-        <button id="doublePointsBtn" onclick="purchaseDoublePoints()">Buy Double Points (200 pts)</button>
-        <button id="goldenClickBtn" onclick="purchaseGoldenClick()">Buy Golden Click (400 pts)</button>
-        <button id="luckBoostBtn" onclick="purchaseLuckBoost()">Buy Luck Boost (500 pts)</button>
-        <button id="timeFreezeBtn" onclick="purchaseTimeFreeze()">Buy Time Freeze (250 pts)</button>
-        <button id="goldenModeBtn" onclick="purchaseGoldenMode()">Buy Golden Mode (2000 pts)</button>
         <p>Auto Clickers: <span id="autoCount">0</span></p>
-        <p>Double Points: <span id="doubleStatus">Off</span></p>
-        <p>Golden Click: <span id="goldenStatus">Not Ready</span></p>
-        <p>Luck Boost: <span id="luckBoostStatus">Inactive</span></p>
-        <p>Time Freeze: <span id="timeFreezeStatus">Inactive</span></p>
-        <p>Golden Mode: <span id="goldenModeStatus">Inactive</span></p>
+        <button onclick="toggleSettingsModal(); toggleShopModal();" class="shop-link-btn">🛒 Open Shop</button>
       </div>
       
       <!-- Upstage Button (appears if every rarity up to "Ultra Legendary" is unlocked) -->
