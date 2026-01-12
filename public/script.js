@@ -468,8 +468,7 @@ async function changePlayerName() {
 
 /******** Timer Update (every 100ms) ********/
 function updateTimer() {
-  // Stop timer when offline or time frozen
-  if (!timeFreezeActive && isGameOnline) {
+  if (!timeFreezeActive) {
     const now = Date.now();
     const secondsElapsed = ((now - startTime) / 1000).toFixed(1);
     document.getElementById("timer").innerText = "Time: " + secondsElapsed + "s";
@@ -779,16 +778,13 @@ function getAutoClickerInterval() {
 }
 
 function startAutoClickers() {
-  // Only run when online
-  if (!isGameOnline) return;
-  
   if (autoClickersCount > 0 && !autoInterval && !timeFreezeActive) {
     runAutoClicker();
   }
 }
 
 function runAutoClicker() {
-  if (!isGameOnline || autoClickersCount <= 0 || timeFreezeActive) {
+  if (autoClickersCount <= 0 || timeFreezeActive) {
     stopAutoClickers();
     return;
   }
@@ -1321,11 +1317,13 @@ function init() {
   updateLogElement();
   updateStats();
   restoreBackground();
+  startAutoClickers(); // Start auto clickers immediately
+  checkAchievements();
   
   // Set up modal close on outside click
   setupModalCloseOnOutsideClick();
   
-  // Initialize server connection
+  // Initialize server connection (non-blocking - game works without server)
   initServerConnection();
 }
 
@@ -1334,11 +1332,11 @@ async function initServerConnection() {
   // Check if API is available
   if (typeof BeyondRareAPI === 'undefined') {
     console.log('API client not loaded');
-    setOfflineMode(true, 'API client failed to load. Please refresh the page.');
+    updateConnectionStatus(false);
     return;
   }
   
-  // First check - must succeed to start game
+  // Try to connect to server - but don't block gameplay if it fails
   try {
     const health = await BeyondRareAPI.checkHealth();
     
@@ -1347,7 +1345,6 @@ async function initServerConnection() {
       lastSuccessfulCheck = Date.now();
       isGameOnline = true;
       updateConnectionStatus(true);
-      startAutoClickers();
       
       // Sync local progress to server
       await syncToServer();
@@ -1356,27 +1353,28 @@ async function initServerConnection() {
       await loadStreak();
       await loadChallenges();
     } else {
-      setOfflineMode(true, 'Cannot connect to server. Please refresh the page.');
-      return;
+      // Server not responding properly - run in local mode
+      console.log('Server health check failed, running locally');
+      updateConnectionStatus(false);
     }
   } catch (error) {
-    console.log('Server not available:', error);
-    setOfflineMode(true, 'Cannot connect to server. Please refresh the page.');
-    return;
+    // Server not available - run in local mode (don't block gameplay!)
+    console.log('Server not available, running locally:', error.message);
+    updateConnectionStatus(false);
   }
   
-  // Set up periodic connection checks
+  // Set up periodic connection checks (but don't block game on failure)
   startConnectionMonitoring();
   
-  // Handle tab visibility changes - reset check when tab becomes visible
+  // Handle tab visibility changes
   document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
-    // Tab just became visible - do an immediate fresh check
+    // Tab just became visible - do a fresh check
     console.log('Tab became visible, checking connection...');
-    connectionFailCount = 0; // Reset fail count when tab becomes active
+    connectionFailCount = 0;
     checkConnectionNow();
   }
 }
@@ -1393,30 +1391,19 @@ async function checkConnectionNow() {
       
       if (!isGameOnline) {
         // We were offline, now back online
-        hideOfflinePopup();
         isGameOnline = true;
-        startAutoClickers();
+        updateConnectionStatus(true);
         await syncToServer();
         await loadStreak();
         await loadChallenges();
       }
-      
-      updateConnectionStatus(true);
     } else {
-      handleConnectionFailure();
+      connectionFailCount++;
+      updateConnectionStatus(false);
     }
   } catch (error) {
-    handleConnectionFailure();
-  }
-}
-
-function handleConnectionFailure() {
-  connectionFailCount++;
-  updateConnectionStatus(false);
-  
-  // Only block after multiple consecutive failures
-  if (connectionFailCount >= MAX_FAIL_COUNT) {
-    setOfflineMode(true, 'Lost connection to server. Please refresh the page.');
+    connectionFailCount++;
+    updateConnectionStatus(false);
   }
 }
 
@@ -1424,7 +1411,7 @@ function startConnectionMonitoring() {
   if (connectionCheckInterval) clearInterval(connectionCheckInterval);
   
   connectionCheckInterval = setInterval(async () => {
-    // Don't check if tab is not visible (browser will throttle anyway)
+    // Don't check if tab is not visible
     if (document.visibilityState !== 'visible') {
       return;
     }
@@ -1432,68 +1419,12 @@ function startConnectionMonitoring() {
     if (typeof BeyondRareAPI === 'undefined') return;
     
     await checkConnectionNow();
-  }, 10000); // Check every 10 seconds when tab is active
+  }, 30000); // Check every 30 seconds (less aggressive)
 }
 
-function setOfflineMode(offline, message = '') {
-  const wasOnline = isGameOnline;
-  isGameOnline = !offline;
+function updateConnectionStatus(online) {
+  isGameOnline = online;
   
-  updateConnectionStatus(!offline);
-  
-  if (offline) {
-    // Block gameplay
-    stopAutoClickers();
-    showOfflinePopup(message);
-    
-    // Disable click button
-    const clickBtn = document.getElementById('clickButton');
-    if (clickBtn) clickBtn.disabled = true;
-  } else if (!wasOnline) {
-    // Resuming from offline
-    hideOfflinePopup();
-    startAutoClickers();
-    
-    // Re-enable click button
-    const clickBtn = document.getElementById('clickButton');
-    if (clickBtn) clickBtn.disabled = false;
-  }
-}
-
-function showOfflinePopup(message = '') {
-  let popup = document.getElementById('offlinePopup');
-  if (!popup) {
-    popup = document.createElement('div');
-    popup.id = 'offlinePopup';
-    popup.className = 'offline-popup';
-    document.body.appendChild(popup);
-  }
-  
-  popup.innerHTML = `
-    <div class="offline-popup-content">
-      <div class="offline-icon">📡</div>
-      <h3>Connection Lost</h3>
-      <p>${message || 'Cannot connect to server.'}</p>
-      <button onclick="location.reload()" class="refresh-btn">🔄 Refresh Page</button>
-    </div>
-  `;
-  popup.style.display = 'flex';
-  
-  // Disable click button
-  const clickBtn = document.getElementById('clickButton');
-  if (clickBtn) clickBtn.disabled = true;
-}
-
-function hideOfflinePopup() {
-  const popup = document.getElementById('offlinePopup');
-  if (popup) popup.style.display = 'none';
-  
-  // Re-enable click button
-  const clickBtn = document.getElementById('clickButton');
-  if (clickBtn) clickBtn.disabled = false;
-}
-
-function updateConnectionStatus(isOnline) {
   let statusElem = document.getElementById('connectionStatus');
   if (!statusElem) {
     statusElem = document.createElement('div');
@@ -1502,13 +1433,18 @@ function updateConnectionStatus(isOnline) {
     document.body.appendChild(statusElem);
   }
   
-  if (isOnline) {
+  if (online) {
     statusElem.className = 'connection-status online';
     statusElem.innerHTML = '<span class="connection-dot"></span> Online';
   } else {
     statusElem.className = 'connection-status offline';
-    statusElem.innerHTML = '<span class="connection-dot"></span> Offline';
+    statusElem.innerHTML = '<span class="connection-dot"></span> Local Mode';
   }
+}
+
+function hideOfflinePopup() {
+  const popup = document.getElementById('offlinePopup');
+  if (popup) popup.style.display = 'none';
 }
 
 async function syncToServer() {
@@ -1848,10 +1784,6 @@ function addSkinsButton() {
 
 /******** Main Click Button Event Listener ********/
 document.getElementById("clickButton").addEventListener("click", function() {
-  // Block clicks when offline
-  if (!isGameOnline) {
-    return;
-  }
   generateRarity(true);
 });
 
