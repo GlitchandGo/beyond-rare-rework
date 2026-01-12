@@ -20,6 +20,9 @@ localStorage.setItem("playerName", playerName);
 // Offline mode tracking
 let isGameOnline = true;
 let connectionCheckInterval = null;
+let connectionFailCount = 0;
+const MAX_FAIL_COUNT = 3; // Require 3 consecutive failures before blocking
+let lastSuccessfulCheck = Date.now();
 
 // Achievements system
 let unlockedAchievements = JSON.parse(localStorage.getItem("unlockedAchievements")) || [];
@@ -755,7 +758,8 @@ function getAutoClickerInterval() {
 }
 
 function startAutoClickers() {
-  if (!isGameOnline) return; // Don't run auto clickers when offline
+  // Only run when online
+  if (!isGameOnline) return;
   
   if (autoClickersCount > 0 && !autoInterval && !timeFreezeActive) {
     runAutoClicker();
@@ -1303,92 +1307,150 @@ function init() {
 async function initServerConnection() {
   // Check if API is available
   if (typeof BeyondRareAPI === 'undefined') {
-    console.log('API client not loaded, running in offline mode');
-    setOfflineMode(true);
+    console.log('API client not loaded');
+    setOfflineMode(true, 'API client failed to load. Please refresh the page.');
     return;
   }
   
+  // First check - must succeed to start game
   try {
     const health = await BeyondRareAPI.checkHealth();
-    setOfflineMode(!health.success);
     
     if (health.success) {
+      connectionFailCount = 0;
+      lastSuccessfulCheck = Date.now();
+      isGameOnline = true;
+      updateConnectionStatus(true);
+      startAutoClickers();
+      
       // Sync local progress to server
       await syncToServer();
       
       // Load streak and challenges
       await loadStreak();
       await loadChallenges();
+    } else {
+      setOfflineMode(true, 'Cannot connect to server. Please refresh the page.');
+      return;
     }
   } catch (error) {
-    console.log('Server not available, running in offline mode');
-    setOfflineMode(true);
+    console.log('Server not available:', error);
+    setOfflineMode(true, 'Cannot connect to server. Please refresh the page.');
+    return;
   }
   
   // Set up periodic connection checks
   startConnectionMonitoring();
+  
+  // Handle tab visibility changes - reset check when tab becomes visible
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // Tab just became visible - do an immediate fresh check
+    console.log('Tab became visible, checking connection...');
+    connectionFailCount = 0; // Reset fail count when tab becomes active
+    checkConnectionNow();
+  }
+}
+
+async function checkConnectionNow() {
+  if (typeof BeyondRareAPI === 'undefined') return;
+  
+  try {
+    const health = await BeyondRareAPI.checkHealth();
+    
+    if (health.success) {
+      connectionFailCount = 0;
+      lastSuccessfulCheck = Date.now();
+      
+      if (!isGameOnline) {
+        // We were offline, now back online
+        hideOfflinePopup();
+        isGameOnline = true;
+        startAutoClickers();
+        await syncToServer();
+        await loadStreak();
+        await loadChallenges();
+      }
+      
+      updateConnectionStatus(true);
+    } else {
+      handleConnectionFailure();
+    }
+  } catch (error) {
+    handleConnectionFailure();
+  }
+}
+
+function handleConnectionFailure() {
+  connectionFailCount++;
+  updateConnectionStatus(false);
+  
+  // Only block after multiple consecutive failures
+  if (connectionFailCount >= MAX_FAIL_COUNT) {
+    setOfflineMode(true, 'Lost connection to server. Please refresh the page.');
+  }
 }
 
 function startConnectionMonitoring() {
   if (connectionCheckInterval) clearInterval(connectionCheckInterval);
   
   connectionCheckInterval = setInterval(async () => {
+    // Don't check if tab is not visible (browser will throttle anyway)
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+    
     if (typeof BeyondRareAPI === 'undefined') return;
     
-    try {
-      const health = await BeyondRareAPI.checkHealth();
-      const wasOffline = !isGameOnline;
-      setOfflineMode(!health.success);
-      
-      // If we just came back online, sync and reload data
-      if (wasOffline && health.success) {
-        await syncToServer();
-        await loadStreak();
-        await loadChallenges();
-      }
-    } catch (error) {
-      setOfflineMode(true);
-    }
-  }, 10000); // Check every 10 seconds
+    await checkConnectionNow();
+  }, 10000); // Check every 10 seconds when tab is active
 }
 
-function setOfflineMode(offline) {
+function setOfflineMode(offline, message = '') {
   const wasOnline = isGameOnline;
   isGameOnline = !offline;
   
   updateConnectionStatus(!offline);
   
   if (offline) {
-    // Stop game functionality
+    // Block gameplay
     stopAutoClickers();
-    showOfflinePopup();
+    showOfflinePopup(message);
+    
+    // Disable click button
+    const clickBtn = document.getElementById('clickButton');
+    if (clickBtn) clickBtn.disabled = true;
   } else if (!wasOnline) {
     // Resuming from offline
     hideOfflinePopup();
     startAutoClickers();
-  } else {
-    // Already online, just start normally
-    startAutoClickers();
+    
+    // Re-enable click button
+    const clickBtn = document.getElementById('clickButton');
+    if (clickBtn) clickBtn.disabled = false;
   }
 }
 
-function showOfflinePopup() {
+function showOfflinePopup(message = '') {
   let popup = document.getElementById('offlinePopup');
   if (!popup) {
     popup = document.createElement('div');
     popup.id = 'offlinePopup';
     popup.className = 'offline-popup';
-    popup.innerHTML = `
-      <div class="offline-popup-content">
-        <div class="offline-icon">📡</div>
-        <h3>Connection Lost</h3>
-        <p>Internet connection is required to play Beyond Rare.</p>
-        <p class="offline-subtext">Waiting for connection...</p>
-        <div class="offline-spinner"></div>
-      </div>
-    `;
     document.body.appendChild(popup);
   }
+  
+  popup.innerHTML = `
+    <div class="offline-popup-content">
+      <div class="offline-icon">📡</div>
+      <h3>Connection Lost</h3>
+      <p>${message || 'Cannot connect to server.'}</p>
+      <button onclick="location.reload()" class="refresh-btn">🔄 Refresh Page</button>
+    </div>
+  `;
   popup.style.display = 'flex';
   
   // Disable click button
@@ -1762,7 +1824,6 @@ function addSkinsButton() {
 document.getElementById("clickButton").addEventListener("click", function() {
   // Block clicks when offline
   if (!isGameOnline) {
-    showOfflinePopup();
     return;
   }
   generateRarity(true);

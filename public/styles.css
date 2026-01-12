@@ -1095,6 +1095,42 @@ button {
   to { transform: rotate(360deg); }
 }
 
+.dismiss-btn {
+  margin-top: 20px;
+  padding: 12px 30px;
+  background: linear-gradient(135deg, #4CAF50, #45a049);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 16px;
+  font-family: 'Bubblegum Sans', cursive;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dismiss-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+}
+
+.refresh-btn {
+  margin-top: 20px;
+  padding: 15px 40px;
+  background: linear-gradient(135deg, #2196F3, #1976D2);
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 18px;
+  font-family: 'Bubblegum Sans', cursive;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(33, 150, 243, 0.5);
+}
+
 /* Disabled click button when offline */
 #clickButton:disabled {
   opacity: 0.5;
