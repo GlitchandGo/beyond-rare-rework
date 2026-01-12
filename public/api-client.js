@@ -45,12 +45,20 @@ const BeyondRareAPI = (function() {
     }
   }
 
+  // Get local username from game
+  function getLocalUsername() {
+    return localStorage.getItem('playerName') || null;
+  }
+
   // Authentication
   async function register(username = null) {
+    // Use local username if not provided
+    const usernameToSend = username || getLocalUsername();
+    
     try {
       const data = await apiCall('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username })
+        body: JSON.stringify({ username: usernameToSend })
       });
 
       if (data.success) {
@@ -58,7 +66,7 @@ const BeyondRareAPI = (function() {
         playerId = data.player.id;
         localStorage.setItem('authToken', authToken);
         localStorage.setItem('serverPlayerId', playerId);
-        console.log('Registered with server');
+        console.log('Registered with server as:', usernameToSend);
       }
 
       return data;
@@ -83,6 +91,14 @@ const BeyondRareAPI = (function() {
         playerId = data.player.id;
         localStorage.setItem('serverPlayerId', playerId);
         console.log('Logged in successfully');
+        
+        // Sync local username to server if different
+        const localUsername = getLocalUsername();
+        const serverUsername = data.player.username;
+        if (localUsername && serverUsername !== localUsername) {
+          console.log('Syncing username to server:', localUsername);
+          await updateUsername(localUsername);
+        }
       }
 
       return data;

@@ -1372,14 +1372,17 @@ async function initServerConnection() {
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'visible') {
-    // Tab just became visible - do a fresh check
-    console.log('Tab became visible, checking connection...');
+    // Tab just became visible - do a fresh check with delay
+    // Give browser time to re-establish network connections
+    console.log('Tab became visible, will check connection...');
     connectionFailCount = 0;
-    checkConnectionNow();
+    setTimeout(() => {
+      checkConnectionNow();
+    }, 500); // Small delay before checking
   }
 }
 
-async function checkConnectionNow() {
+async function checkConnectionNow(isRetry = false) {
   if (typeof BeyondRareAPI === 'undefined') return;
   
   try {
@@ -1398,12 +1401,28 @@ async function checkConnectionNow() {
         await loadChallenges();
       }
     } else {
+      // If first failure and not a retry, try once more after a short delay
+      if (!isRetry && connectionFailCount === 0) {
+        console.log('Connection check failed, retrying...');
+        setTimeout(() => checkConnectionNow(true), 2000);
+        return;
+      }
       connectionFailCount++;
-      updateConnectionStatus(false);
+      if (connectionFailCount >= 2) {
+        updateConnectionStatus(false);
+      }
     }
   } catch (error) {
+    // If first failure and not a retry, try once more after a short delay
+    if (!isRetry && connectionFailCount === 0) {
+      console.log('Connection check error, retrying...');
+      setTimeout(() => checkConnectionNow(true), 2000);
+      return;
+    }
     connectionFailCount++;
-    updateConnectionStatus(false);
+    if (connectionFailCount >= 2) {
+      updateConnectionStatus(false);
+    }
   }
 }
 
