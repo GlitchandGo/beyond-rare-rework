@@ -223,14 +223,12 @@ const achievements = [
   { id: "first_upstage", name: "New Game+", description: "Upstage for the first time", icon: "🔄", check: () => upstageCount >= 1 }
 ];
 
-/******** Leaderboard Data (simulated online storage) ********/
-// In a real implementation, this would use a backend service
-// For now, we use localStorage to simulate, with mock data for demonstration
-let leaderboardData = JSON.parse(localStorage.getItem("leaderboardData")) || [];
-
-// Leaderboard update throttle (prevent spam writes)
-let lastLeaderboardUpdate = 0;
-const LEADERBOARD_UPDATE_INTERVAL = 30000; // 30 seconds minimum between updates
+/******** Leaderboard Data ********/
+// Leaderboard is fetched from server only - no local fallback
+let leaderboardCache = null;
+let leaderboardLastFetch = 0;
+const LEADERBOARD_CACHE_TIME = 30000; // Cache for 30 seconds
+let isLoadingLeaderboard = false;
 
 /******** Helper Functions ********/
 function generatePlayerId() {
@@ -359,50 +357,70 @@ function showAchievementPopup(achievement) {
 
 /******** Leaderboard Functions ********/
 async function updateLeaderboard() {
-  // Try to sync with server first
+  // Sync progress to server which updates leaderboard
   if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
     await syncToServer();
   }
 }
 
-async function getLeaderboard() {
-  // Try to get from server
+async function fetchLeaderboard() {
+  // Return cached data if fresh enough
+  const now = Date.now();
+  if (leaderboardCache && (now - leaderboardLastFetch) < LEADERBOARD_CACHE_TIME) {
+    return leaderboardCache;
+  }
+  
+  // Fetch from server
   if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
     try {
       const data = await BeyondRareAPI.getLeaderboard('all-time', 100);
       if (data.success && data.leaderboard) {
-        return data.leaderboard;
+        leaderboardCache = data.leaderboard;
+        leaderboardLastFetch = now;
+        return leaderboardCache;
       }
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error);
     }
   }
   
-  // Fallback to local data
-  return leaderboardData;
+  // Return empty if no data
+  return [];
 }
 
 async function displayLeaderboard() {
   const leaderboardList = document.getElementById("leaderboardList");
   if (!leaderboardList) return;
   
-  leaderboardList.innerHTML = "<li class='loading'>Loading leaderboard...</li>";
+  // Prevent multiple simultaneous loads
+  if (isLoadingLeaderboard) return;
   
-  const data = await getLeaderboard();
+  // Show loading only if no cache
+  if (!leaderboardCache) {
+    leaderboardList.innerHTML = "<li class='loading'>Loading leaderboard...</li>";
+  }
   
+  isLoadingLeaderboard = true;
+  const data = await fetchLeaderboard();
+  isLoadingLeaderboard = false;
+  
+  // Clear and rebuild
   leaderboardList.innerHTML = "";
   
   if (!data || data.length === 0) {
-    leaderboardList.innerHTML = "<li class='leaderboard-empty'>No players yet. Keep playing!</li>";
+    leaderboardList.innerHTML = "<li class='leaderboard-empty'>No players on the leaderboard yet!</li>";
     return;
   }
   
-  const serverPlayerId = typeof BeyondRareAPI !== 'undefined' ? BeyondRareAPI.getPlayerId() : playerId;
+  const serverPlayerId = typeof BeyondRareAPI !== 'undefined' ? BeyondRareAPI.getPlayerId() : null;
   
   data.forEach((player, index) => {
     const li = document.createElement("li");
     li.className = "leaderboard-entry";
-    if (player.id === serverPlayerId || player.playerId === serverPlayerId) {
+    
+    // Check if this is the current player
+    const isCurrentPlayer = serverPlayerId && (player.playerId === serverPlayerId || player.id === serverPlayerId);
+    if (isCurrentPlayer) {
       li.classList.add("leaderboard-self");
     }
     
@@ -412,10 +430,13 @@ async function displayLeaderboard() {
     else if (index === 2) rankIcon = "🥉";
     else rankIcon = `#${index + 1}`;
     
+    const playerName = player.username || player.name || 'Anonymous';
+    const percent = player.completionPercent || player.percent || 0;
+    
     li.innerHTML = `
       <span class="leaderboard-rank">${rankIcon}</span>
-      <span class="leaderboard-name">${escapeHtml(player.name || player.username || 'Unknown')}</span>
-      <span class="leaderboard-percent">${(player.percent || player.completionPercent || 0).toFixed(1)}%</span>
+      <span class="leaderboard-name">${escapeHtml(playerName)}</span>
+      <span class="leaderboard-percent">${percent.toFixed(1)}%</span>
     `;
     
     leaderboardList.appendChild(li);
@@ -1199,8 +1220,13 @@ function toggleSettingsModal() {
 
 function toggleLeaderboardModal() {
   const modal = document.getElementById("leaderboardModal");
-  modal.style.display = (modal.style.display === "block") ? "none" : "block";
-  displayLeaderboard();
+  const isOpening = modal.style.display !== "block";
+  modal.style.display = isOpening ? "block" : "none";
+  
+  // Only fetch leaderboard when opening the modal
+  if (isOpening) {
+    displayLeaderboard();
+  }
 }
 
 function resetGame() {
