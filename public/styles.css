@@ -1160,3 +1160,308 @@ button {
     max-width: 95%;
   }
 }
+
+/* ============================================
+   NEW STYLES FOR STAGE SYSTEM & OVERHAUL
+   ============================================ */
+
+/* Stage Display in Header */
+#stageDisplay {
+  font-size: 22px;
+  font-weight: bold;
+  color: #667eea;
+  background: linear-gradient(135deg, #fff, #f0f0ff);
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 2px solid #667eea;
+}
+
+/* Shop Note */
+.shop-note {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+  margin-bottom: 10px;
+}
+
+.shop-item-desc {
+  font-size: 10px;
+  color: #888;
+  margin-top: 3px;
+}
+
+/* Background Shop List */
+.bg-shop-list {
+  list-style: none;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.bg-shop-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.bg-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bg-name {
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.bg-price {
+  font-size: 12px;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.bg-stage {
+  font-size: 11px;
+  color: rgba(255,255,255,0.8);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.active-badge {
+  background: rgba(0,0,0,0.7);
+  color: #4caf50;
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+/* Button Skins Grid */
+.skins-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.skin-item {
+  padding: 15px 10px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: all 0.2s;
+}
+
+.skin-item:hover {
+  transform: scale(1.05);
+}
+
+.skin-item.active {
+  border: 3px solid #4caf50;
+  box-shadow: 0 0 15px rgba(76,175,80,0.5);
+}
+
+.skin-item.locked {
+  opacity: 0.5;
+}
+
+.skin-name {
+  display: block;
+  color: #fff;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  font-size: 12px;
+}
+
+.skin-price {
+  display: block;
+  color: rgba(255,255,255,0.9);
+  font-size: 10px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+  margin-top: 3px;
+}
+
+/* Toast Notification */
+.toast-notification {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: linear-gradient(135deg, #333, #555);
+  color: white;
+  padding: 15px 30px;
+  border-radius: 30px;
+  font-size: 16px;
+  font-weight: bold;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+  z-index: 9999;
+  opacity: 0;
+  transition: all 0.5s ease;
+}
+
+.toast-notification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* Stage Notification Banner */
+.stage-notification {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  z-index: 8000;
+  animation: slideDown 0.5s ease;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+.stage-notification button {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.stage-notification button:first-of-type {
+  background: #4caf50;
+  color: white;
+}
+
+.stage-notification button:last-of-type {
+  background: rgba(255,255,255,0.2);
+  color: white;
+}
+
+/* Stage Modal */
+.stage-modal {
+  max-width: 450px;
+}
+
+.stage-warning {
+  text-align: left;
+  margin: 20px 0;
+}
+
+.stage-warning h4 {
+  margin: 15px 0 8px;
+  font-size: 14px;
+}
+
+.stage-warning ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.stage-warning li {
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.advance-btn {
+  background: linear-gradient(135deg, #4caf50, #45a049);
+  color: white;
+  padding: 15px 30px;
+  font-size: 18px;
+  border: none;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin: 10px;
+}
+
+.advance-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(76,175,80,0.4);
+}
+
+.cancel-btn {
+  background: #e0e0e0;
+  color: #333;
+  padding: 10px 25px;
+  font-size: 14px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  margin: 10px;
+}
+
+.danger-btn {
+  background: linear-gradient(135deg, #ff4444, #cc0000);
+  color: white;
+}
+
+/* Golden Mode Effect */
+body.golden-mode {
+  background: linear-gradient(135deg, #ffd700, #ffb347) !important;
+}
+
+body.golden-mode #clickButton {
+  animation: goldPulse 0.5s infinite;
+}
+
+@keyframes goldPulse {
+  0%, 100% { box-shadow: 0 0 20px #ffd700; }
+  50% { box-shadow: 0 0 40px #ffd700; }
+}
+
+/* Challenge claimed badge */
+.claimed {
+  color: #4caf50;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+/* Game Area */
+#gameArea {
+  margin: 40px 0;
+}
+
+/* Leaderboard Stage Column */
+.leaderboard-stage {
+  font-size: 14px;
+  color: #667eea;
+  font-weight: bold;
+  margin: 0 10px;
+}
+
+/* Error state for leaderboard */
+.error {
+  color: #c62828;
+  text-align: center;
+  padding: 20px;
+}
+
+.empty {
+  color: #888;
+  text-align: center;
+  padding: 20px;
+  font-style: italic;
+}
+
+/* Responsive Skins Grid */
+@media (max-width: 480px) {
+  .skins-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

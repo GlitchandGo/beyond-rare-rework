@@ -1,39 +1,286 @@
-/******** Global Variables & Persistent Storage ********/
-let points = localStorage.getItem("points") ? parseInt(localStorage.getItem("points")) : 0;
-let startTime = localStorage.getItem("startTime") ? parseInt(localStorage.getItem("startTime")) : Date.now();
-localStorage.setItem("startTime", startTime);
-let autoClickersCount = localStorage.getItem("autoClickersCount") ? parseInt(localStorage.getItem("autoClickersCount")) : 0;
-let autoInterval = null;
-let doublePointsActive = false, goldenClickReady = false;
-let luckBoostActive = false, timeFreezeActive = false, goldenModeActive = false;
-let totalClicks = localStorage.getItem("totalClicks") ? parseInt(localStorage.getItem("totalClicks")) : 0;
-let logData = JSON.parse(localStorage.getItem("logData")) || [];
-let shopPriceMultiplier = localStorage.getItem("shopPriceMultiplier") ? parseFloat(localStorage.getItem("shopPriceMultiplier")) : 1;
-let upstageCount = localStorage.getItem("upstageCount") ? parseInt(localStorage.getItem("upstageCount")) : 0;
+/**
+ * Beyond Rare - Complete Game Overhaul
+ * Features:
+ * - Stage system with 100+ rarities unlocked progressively
+ * - Max 100 auto clickers that work like manual clicks
+ * - 1.5x price increase on each purchase
+ * - Client-side daily tasks
+ * - Server only for leaderboard (userId + username)
+ * - Backgrounds and skins in shop
+ */
 
-// Player identification for leaderboard
-let playerId = localStorage.getItem("playerId") || generatePlayerId();
-let playerName = localStorage.getItem("playerName") || generatePlayerName();
-localStorage.setItem("playerId", playerId);
-localStorage.setItem("playerName", playerName);
+/******** GLOBAL STATE ********/
+let gameState = {
+  // Core
+  points: 0,
+  totalClicks: 0,
+  startTime: Date.now(),
+  
+  // Stage system
+  currentStage: 1,
+  stageHistory: [],
+  
+  // Auto clickers
+  autoClickerCount: 0,
+  maxAutoClickers: 100,
+  
+  // Pricing
+  purchaseCount: 0, // Total purchases for price scaling
+  
+  // Unlocks
+  unlockedRarities: [],
+  ownedBackgrounds: {},
+  ownedSkins: {},
+  
+  // Active effects
+  activeEffects: {
+    doublePoints: false,
+    goldenClick: false,
+    luckBoost: false,
+    timeFreeze: false,
+    goldenMode: false
+  },
+  
+  // Achievements (permanent across stages)
+  achievements: [],
+  
+  // Daily tasks (client-side)
+  dailyTasks: null,
+  dailyTasksDate: null,
+  streakCount: 0,
+  lastStreakClaim: null,
+  
+  // Identity
+  userId: null,
+  username: null,
+  
+  // Active background/skin
+  activeBackground: 'default',
+  activeSkin: 'default'
+};
 
-// Offline mode tracking
-let isGameOnline = true;
-let connectionCheckInterval = null;
-let connectionFailCount = 0;
-const MAX_FAIL_COUNT = 3; // Require 3 consecutive failures before blocking
-let lastSuccessfulCheck = Date.now();
+// Load state from localStorage
+function loadGameState() {
+  const saved = localStorage.getItem('beyondRareState');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      gameState = { ...gameState, ...parsed };
+    } catch (e) {
+      console.error('Failed to load game state:', e);
+    }
+  }
+  
+  // Ensure userId exists
+  if (!gameState.userId) {
+    gameState.userId = generateUserId();
+  }
+  if (!gameState.username) {
+    gameState.username = generateUsername();
+  }
+  
+  saveGameState();
+}
 
-// Achievements system
-let unlockedAchievements = JSON.parse(localStorage.getItem("unlockedAchievements")) || [];
-let achievementQueue = [];
-let isShowingAchievement = false;
+function saveGameState() {
+  localStorage.setItem('beyondRareState', JSON.stringify(gameState));
+}
 
-// Shop items purchased tracking
-let purchasedShopItems = JSON.parse(localStorage.getItem("purchasedShopItems")) || {};
+/******** USER ID SYSTEM ********/
+function generateUserId() {
+  return 'u_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+}
 
-/******** Shop Base Prices ********/
-const SHOP_PRICES = {
+function generateUsername() {
+  const adjectives = ['Swift', 'Lucky', 'Rare', 'Epic', 'Cosmic', 'Stellar', 'Mighty', 'Mystic', 'Golden', 'Crystal', 'Shadow', 'Blazing', 'Frost', 'Thunder', 'Neon'];
+  const nouns = ['Hunter', 'Seeker', 'Finder', 'Explorer', 'Legend', 'Master', 'Champion', 'Voyager', 'Dreamer', 'Wizard', 'Phoenix', 'Dragon', 'Knight', 'Rogue', 'Sage'];
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 999);
+  return `${adj}${noun}${num}`;
+}
+
+async function checkUserIdWithServer() {
+  try {
+    const response = await fetch('/api/user/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: gameState.userId })
+    });
+    const data = await response.json();
+    
+    if (data.exists) {
+      // UserId already exists, this is fine - we're the same user
+      return true;
+    } else {
+      // Register this userId
+      await registerWithServer();
+      return true;
+    }
+  } catch (error) {
+    console.log('Server not available, playing locally');
+    return false;
+  }
+}
+
+async function registerWithServer() {
+  try {
+    await fetch('/api/user/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        username: gameState.username
+      })
+    });
+  } catch (error) {
+    console.error('Failed to register:', error);
+  }
+}
+
+async function updateUsernameOnServer() {
+  try {
+    await fetch('/api/user/username', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        username: gameState.username
+      })
+    });
+  } catch (error) {
+    console.error('Failed to update username:', error);
+  }
+}
+
+async function syncStatsToServer() {
+  if (!isOnline) return;
+  
+  try {
+    await fetch('/api/user/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: gameState.userId,
+        username: gameState.username,
+        totalClicks: gameState.totalClicks,
+        points: gameState.points,
+        currentStage: gameState.currentStage,
+        raritiesFound: gameState.unlockedRarities.length,
+        completionPercent: calculateCompletionPercent()
+      })
+    });
+  } catch (error) {
+    console.error('Failed to sync stats:', error);
+  }
+}
+
+/******** STAGE-BASED RARITY SYSTEM ********/
+// Base rarities for Stage 1
+const STAGE_1_RARITIES = [
+  { name: "Average", chance: 40, points: 0, color: "#808080" },
+  { name: "Common", chance: 25, points: 0, color: "#a0a0a0" },
+  { name: "Uncommon", chance: 15, points: 1, color: "#50c878" },
+  { name: "Slightly Rare", chance: 10, points: 2, color: "#4169e1" },
+  { name: "Rare", chance: 5, points: 5, color: "#0000ff" },
+  { name: "Very Rare", chance: 2.5, points: 10, color: "#8a2be2" },
+  { name: "Super Rare", chance: 1.5, points: 25, color: "#9400d3" },
+  { name: "Ultra Rare", chance: 0.7, points: 50, color: "#ff00ff" },
+  { name: "Epic", chance: 0.2, points: 100, color: "#ff1493" },
+  { name: "Legendary", chance: 0.1, points: 250, color: "#ffd700" }
+];
+
+// Additional rarities unlocked at higher stages
+const STAGE_2_RARITIES = [
+  { name: "Mythical", chance: 0.08, points: 400, color: "#ff4500" },
+  { name: "Super Mythical", chance: 0.06, points: 600, color: "#ff6347" },
+  { name: "Ultra Mythical", chance: 0.04, points: 900, color: "#dc143c" }
+];
+
+const STAGE_3_RARITIES = [
+  { name: "Chroma", chance: 0.05, points: 1200, color: "#00ffff" },
+  { name: "Super Chroma", chance: 0.035, points: 1600, color: "#00ced1" },
+  { name: "Ultra Chroma", chance: 0.025, points: 2000, color: "#20b2aa" }
+];
+
+const STAGE_4_RARITIES = [
+  { name: "Ethereal", chance: 0.03, points: 2500, color: "#e6e6fa" },
+  { name: "Super Ethereal", chance: 0.02, points: 3200, color: "#d8bfd8" },
+  { name: "Ultra Ethereal", chance: 0.012, points: 4000, color: "#dda0dd" }
+];
+
+const STAGE_5_RARITIES = [
+  { name: "Stellar", chance: 0.015, points: 5000, color: "#ffe4b5" },
+  { name: "Super Stellar", chance: 0.01, points: 6500, color: "#ffdab9" },
+  { name: "Ultra Stellar", chance: 0.007, points: 8000, color: "#ffefd5" }
+];
+
+const STAGE_6_RARITIES = [
+  { name: "Cosmic", chance: 0.008, points: 10000, color: "#191970" },
+  { name: "Super Cosmic", chance: 0.005, points: 13000, color: "#000080" },
+  { name: "Ultra Cosmic", chance: 0.003, points: 16000, color: "#0f0f3d" }
+];
+
+const STAGE_7_RARITIES = [
+  { name: "Divine", chance: 0.004, points: 20000, color: "#fff8dc" },
+  { name: "Super Divine", chance: 0.0025, points: 27000, color: "#fffff0" },
+  { name: "Ultra Divine", chance: 0.0015, points: 35000, color: "#fffaf0" }
+];
+
+const STAGE_8_RARITIES = [
+  { name: "Transcendent", chance: 0.002, points: 45000, color: "#7fffd4" },
+  { name: "Super Transcendent", chance: 0.0012, points: 60000, color: "#66cdaa" },
+  { name: "Ultra Transcendent", chance: 0.0007, points: 80000, color: "#3cb371" }
+];
+
+const STAGE_9_RARITIES = [
+  { name: "Infinite", chance: 0.0008, points: 100000, color: "#4b0082" },
+  { name: "Super Infinite", chance: 0.0005, points: 140000, color: "#8b008b" },
+  { name: "Ultra Infinite", chance: 0.0003, points: 200000, color: "#9932cc" }
+];
+
+const STAGE_10_RARITIES = [
+  { name: "Omega", chance: 0.0004, points: 300000, color: "#b8860b" },
+  { name: "Super Omega", chance: 0.00025, points: 450000, color: "#daa520" },
+  { name: "Ultra Omega", chance: 0.00015, points: 700000, color: "#ffd700" },
+  { name: "BEYOND RARE", chance: 0.0001, points: 1000000, color: "linear-gradient(90deg, red, orange, yellow, green, blue, purple)" }
+];
+
+// Secret rarity unlocked after all others
+const SECRET_RARITY = { name: "???GLITCHED???", chance: 0.00005, points: 5000000, color: "#00ff00" };
+
+function getRaritiesForStage(stage) {
+  let rarities = [...STAGE_1_RARITIES];
+  
+  if (stage >= 2) rarities = rarities.concat(STAGE_2_RARITIES);
+  if (stage >= 3) rarities = rarities.concat(STAGE_3_RARITIES);
+  if (stage >= 4) rarities = rarities.concat(STAGE_4_RARITIES);
+  if (stage >= 5) rarities = rarities.concat(STAGE_5_RARITIES);
+  if (stage >= 6) rarities = rarities.concat(STAGE_6_RARITIES);
+  if (stage >= 7) rarities = rarities.concat(STAGE_7_RARITIES);
+  if (stage >= 8) rarities = rarities.concat(STAGE_8_RARITIES);
+  if (stage >= 9) rarities = rarities.concat(STAGE_9_RARITIES);
+  if (stage >= 10) rarities = rarities.concat(STAGE_10_RARITIES);
+  
+  // Add glitched rarity if all current stage rarities are unlocked
+  if (hasAllCurrentRarities()) {
+    rarities.push(SECRET_RARITY);
+  }
+  
+  return rarities;
+}
+
+function hasAllCurrentRarities() {
+  const currentRarities = getRaritiesForStage(gameState.currentStage);
+  return currentRarities.every(r => gameState.unlockedRarities.includes(r.name));
+}
+
+function getTotalRaritiesForStage(stage) {
+  return getRaritiesForStage(stage).length;
+}
+
+/******** SHOP SYSTEM ********/
+const BASE_PRICES = {
   autoClicker: 100,
   doublePoints: 200,
   goldenClick: 400,
@@ -42,766 +289,334 @@ const SHOP_PRICES = {
   goldenMode: 2000
 };
 
-// Total shop item types for completion tracking
-const TOTAL_SHOP_ITEMS = Object.keys(SHOP_PRICES).length;
+function getItemPrice(basePrice) {
+  // Each purchase increases price by 1.5x
+  return Math.floor(basePrice * Math.pow(1.5, gameState.purchaseCount));
+}
 
-/******** Rarity Definitions ********/
-const rarities = [
-  { name: "Average", chance: 40.003 },
-  { name: "Common", chance: 20 },
-  { name: "Uncommon", chance: 17.6 },
-  { name: "Slightly Rare", chance: 10 },
-  { name: "Rare", chance: 5 },
-  { name: "More Rare", chance: 3 },
-  { name: "Very Rare", chance: 2 },
-  { name: "Super Rare", chance: 1 },
-  { name: "Ultra Rare", chance: 0.5 },
-  { name: "Epic", chance: 0.4 },
-  { name: "More Epic", chance: 0.2 },
-  { name: "Very Epic", chance: 0.15 },
-  { name: "Super Epic", chance: 0.12 },
-  { name: "Ultra Epic", chance: 0.1 },
-  { name: "Legendary", chance: 0.08 },
-  { name: "Legendary +", chance: 0.07 },
-  { name: "Super Legendary", chance: 0.06 },
-  { name: "Ultra Legendary", chance: 0.05 },
-  { name: "Mythical", chance: 0.045 },
-  { name: "Ultra Mythical", chance: 0.04 },
-  { name: "Chroma", chance: 0.03 },
-  { name: "Super Chroma", chance: 0.025 },
-  { name: "Ultra Chroma", chance: 0.022 },
-  { name: "Magical", chance: 0.02 },
-  { name: "Super Magical", chance: 0.018 },
-  { name: "Ultra Magical", chance: 0.016 },
-  { name: "Extreme", chance: 0.015 },
-  { name: "Ultra Extreme", chance: 0.012 },
-  { name: "Ethereal", chance: 0.01 },
-  { name: "Ultra Ethereal", chance: 0.008 },
-  { name: "Stellar", chance: 0.006 },
-  { name: "Ultra Stellar", chance: 0.005 },
-  { name: "Extraordinary", chance: 0.003 },
-  { name: "Ultra Extraordinary", chance: 0.002 },
-  { name: "Unknown", chance: 0.001 },
-  { name: "Glitched", chance: 0.0005 }
-];
+function getAutoClickerPrice() {
+  // Auto clickers scale with count owned
+  return Math.floor(BASE_PRICES.autoClicker * Math.pow(1.5, gameState.autoClickerCount));
+}
 
-const TOTAL_RARITIES = rarities.length;
-
-const rarityPoints = {
-  "Average": 0,
-  "Common": 0,
-  "Uncommon": 0,
-  "Slightly Rare": 1,
-  "Rare": 2,
-  "More Rare": 2,
-  "Very Rare": 3,
-  "Super Rare": 5,
-  "Ultra Rare": 8,
-  "Epic": 10,
-  "More Epic": 15,
-  "Very Epic": 20,
-  "Super Epic": 25,
-  "Ultra Epic": 30,
-  "Legendary": 40,
-  "Legendary +": 50,
-  "Super Legendary": 75,
-  "Ultra Legendary": 90,
-  "Mythical": 100,
-  "Ultra Mythical": 150,
-  "Chroma": 200,
-  "Super Chroma": 250,
-  "Ultra Chroma": 350,
-  "Magical": 500,
-  "Super Magical": 750,
-  "Ultra Magical": 900,
-  "Extreme": 1000,
-  "Ultra Extreme": 1200,
-  "Ethereal": 1500,
-  "Ultra Ethereal": 1800,
-  "Stellar": 2000,
-  "Ultra Stellar": 2500,
-  "Extraordinary": 3000,
-  "Ultra Extraordinary": 4000,
-  "Unknown": 5000,
-  "Glitched": 10000
+/******** BACKGROUNDS ********/
+const BACKGROUNDS = {
+  // Stage 1 backgrounds
+  "Classic Blue": { cost: 200, requiredStage: 1, color: "#add8e6" },
+  "Classic Green": { cost: 200, requiredStage: 1, color: "#90ee90" },
+  "Classic Red": { cost: 200, requiredStage: 1, color: "#ffcccb" },
+  "Classic Yellow": { cost: 200, requiredStage: 1, color: "#fffacd" },
+  "Classic Purple": { cost: 200, requiredStage: 1, color: "#d8bfd8" },
+  
+  // Stage 2 backgrounds
+  "Ocean Depth": { cost: 500, requiredStage: 2, color: "linear-gradient(135deg, #006994, #00008b)" },
+  "Forest Mist": { cost: 500, requiredStage: 2, color: "linear-gradient(135deg, #228b22, #006400)" },
+  "Sunset Glow": { cost: 500, requiredStage: 2, color: "linear-gradient(135deg, #ff4500, #ffd700)" },
+  
+  // Stage 3 backgrounds
+  "Rainbow": { cost: 1000, requiredStage: 3, color: "linear-gradient(90deg, red, orange, yellow, green, blue, purple)" },
+  "Aurora": { cost: 1000, requiredStage: 3, color: "linear-gradient(135deg, #00ff7f, #00bfff, #9400d3)" },
+  "Twilight": { cost: 1000, requiredStage: 3, color: "linear-gradient(135deg, #191970, #4b0082, #800080)" },
+  
+  // Stage 4+ backgrounds
+  "Ethereal Dream": { cost: 2000, requiredStage: 4, color: "linear-gradient(135deg, #e6e6fa, #dda0dd, #9370db)" },
+  "Stellar Night": { cost: 3000, requiredStage: 5, color: "linear-gradient(135deg, #0c0c0c, #1a1a2e, #4a4a6a)" },
+  "Cosmic Void": { cost: 5000, requiredStage: 6, color: "linear-gradient(135deg, #000, #0f0f3d, #191970)" },
+  "Divine Light": { cost: 8000, requiredStage: 7, color: "linear-gradient(135deg, #fff8dc, #ffd700, #fff)" },
+  "Transcendence": { cost: 15000, requiredStage: 8, color: "linear-gradient(135deg, #7fffd4, #00fa9a, #00ced1)" },
+  "Infinite Abyss": { cost: 30000, requiredStage: 9, color: "linear-gradient(135deg, #4b0082, #000, #9932cc)" },
+  "Omega Dimension": { cost: 100000, requiredStage: 10, color: "linear-gradient(45deg, gold, silver, gold, silver)" }
 };
 
-/******** Permanent Backgrounds ********/
-const backgroundsPermanent = {
-  "White": { cost: 200, requiredRarity: "Common", color: "#ffffff" },
-  "Light Red": { cost: 200, requiredRarity: "Mythical", color: "#ffcccb" },
-  "Medium Red": { cost: 200, requiredRarity: "Mythical", color: "#ff6666" },
-  "Dark Red": { cost: 200, requiredRarity: "Mythical", color: "#8b0000" },
-  "Light Blue": { cost: 200, requiredRarity: "Rare", color: "#add8e6" },
-  "Medium Blue": { cost: 200, requiredRarity: "Rare", color: "#6495ed" },
-  "Dark Blue": { cost: 200, requiredRarity: "Rare", color: "#00008b" },
-  "Light Yellow": { cost: 200, requiredRarity: "Legendary", color: "#fffacd" },
-  "Medium Yellow": { cost: 200, requiredRarity: "Legendary", color: "#f0e68c" },
-  "Dark Yellow": { cost: 200, requiredRarity: "Legendary", color: "#ffd700" },
-  "Light Orange": { cost: 200, requiredRarity: "Chroma", color: "#ffdab9" },
-  "Medium Orange": { cost: 200, requiredRarity: "Chroma", color: "#ffa500" },
-  "Dark Orange": { cost: 200, requiredRarity: "Chroma", color: "#ff8c00" },
-  "Light Green": { cost: 200, requiredRarity: "Uncommon", color: "#90ee90" },
-  "Medium Green": { cost: 200, requiredRarity: "Uncommon", color: "#32cd32" },
-  "Dark Green": { cost: 200, requiredRarity: "Uncommon", color: "#006400" },
-  "Light Purple": { cost: 200, requiredRarity: "Epic", color: "#d8bfd8" },
-  "Medium Purple": { cost: 200, requiredRarity: "Epic", color: "#9370db" },
-  "Dark Purple": { cost: 200, requiredRarity: "Epic", color: "#4b0082" },
-  "Rainbow": { cost: 500, requiredRarity: "Chroma", color: "linear-gradient(90deg, red, orange, yellow, green, blue, indigo, violet)" },
-  "Red-Blue Gradient": { cost: 400, requiredRarity: "Ultra Legendary", color: "linear-gradient(45deg, red, blue)" },
-  "Red-Yellow Gradient": { cost: 400, requiredRarity: "Ultra Legendary", color: "linear-gradient(45deg, red, yellow)" },
-  "Blue-Yellow Gradient": { cost: 400, requiredRarity: "Ultra Legendary", color: "linear-gradient(45deg, blue, yellow)" },
-  "Ethereal Glow": { cost: 600, requiredRarity: "Ethereal", color: "linear-gradient(135deg, #2e0854, #7b68ee)" },
-  "Stellar Night": { cost: 800, requiredRarity: "Stellar", color: "linear-gradient(135deg, #0c0c0c, #1a1a2e, #4a4a6a)" },
-  "Unknown Void": { cost: 1000, requiredRarity: "Unknown", color: "linear-gradient(135deg, #000000, #1a0a2e)" }
+/******** BUTTON SKINS ********/
+const BUTTON_SKINS = {
+  "default": { name: "Classic", cost: 0, gradient: "linear-gradient(135deg, #ff6b6b, #ee5a24)", unlocked: true },
+  "ocean": { name: "Ocean Wave", cost: 300, gradient: "linear-gradient(135deg, #0099ff, #00ccff)" },
+  "forest": { name: "Forest", cost: 300, gradient: "linear-gradient(135deg, #2ecc71, #27ae60)" },
+  "sunset": { name: "Sunset", cost: 300, gradient: "linear-gradient(135deg, #f39c12, #e74c3c)" },
+  "amethyst": { name: "Amethyst", cost: 500, gradient: "linear-gradient(135deg, #9b59b6, #8e44ad)" },
+  "gold": { name: "Gold Rush", cost: 1000, gradient: "linear-gradient(135deg, #f1c40f, #f39c12)" },
+  "diamond": { name: "Diamond", cost: 2000, gradient: "linear-gradient(135deg, #ecf0f1, #bdc3c7, #ecf0f1)" },
+  "rainbow": { name: "Rainbow", cost: 5000, gradient: "linear-gradient(90deg, red, orange, yellow, green, blue, purple)" },
+  "cosmic": { name: "Cosmic", cost: 10000, gradient: "linear-gradient(135deg, #000, #9b59b6, #3498db, #000)" },
+  "divine": { name: "Divine", cost: 25000, gradient: "linear-gradient(135deg, #fff, #ffd700, #fff)" }
 };
 
-const TOTAL_PERMANENT_BACKGROUNDS = Object.keys(backgroundsPermanent).length;
-
-/******** Seasonal Backgrounds ********/
-const seasonalMainBackgrounds = [
-  { name: "Cherry Blossom Bliss", cost: 500, availableMonths: [2,3,4], color: "linear-gradient(135deg, #FFC0CB, #FFFAF0)" },
-  { name: "Meadow Bloom", cost: 500, availableMonths: [2,3,4], color: "linear-gradient(135deg, #50C878, #FFD700)" },
-  { name: "Ocean Sunset", cost: 500, availableMonths: [5,6,7], color: "linear-gradient(135deg, #008080, #FF4500)" },
-  { name: "Summer Vibes", cost: 500, availableMonths: [5,6,7], color: "linear-gradient(135deg, #40E0D0, #FFD700)" },
-  { name: "Harvest Glow", cost: 500, availableMonths: [8,9,10], color: "linear-gradient(135deg, #FF8C00, #8B4513)" },
-  { name: "Crisp Autumn", cost: 500, availableMonths: [8,9,10], color: "linear-gradient(135deg, #DC143C, #FFBF00)" },
-  { name: "Frostbite Chill", cost: 500, availableMonths: [11,0,1], color: "linear-gradient(135deg, #B0E0E6, #DCDCDC)" },
-  { name: "Snowy Cabin", cost: 500, availableMonths: [11,0,1], color: "linear-gradient(135deg, #006400, #8B4513)" }
-];
-
-const seasonalEventBackgrounds = [
-  { name: "July 4th Fireworks", cost: 750, availableDates: { start: new Date(new Date().getFullYear(), 5, 15), end: new Date(new Date().getFullYear(), 6, 15) }, color: "linear-gradient(135deg, #002868, #BF0A30, #FFFFFF)" },
-  { name: "Halloween Haunt", cost: 750, availableDates: { start: new Date(new Date().getFullYear(), 9, 15), end: new Date(new Date().getFullYear(), 9, 31) }, color: "linear-gradient(135deg, #555555, #FF6600, #000000)" },
-  { name: "Christmas Cheer", cost: 750, availableMonths: [11], color: "linear-gradient(135deg, #D32F2F, #008000)" },
-  { name: "Summer Freedom", cost: 750, availableDates: { start: new Date(new Date().getFullYear(), 4, 28), end: new Date(new Date().getFullYear(), 5, 10) }, color: "linear-gradient(135deg, #87CEEB, #FFD700, #32CD32)" },
-  { name: "Happy New Year", cost: 750, availableDates: { start: new Date(new Date().getFullYear(), 0, 1), end: new Date(new Date().getFullYear(), 0, 5) }, color: "linear-gradient(135deg, #00008B, #FFD700, #C0C0C0)" }
-];
-
-const TOTAL_SEASONAL_BACKGROUNDS = seasonalMainBackgrounds.length + seasonalEventBackgrounds.length;
-
-let ownedBackgrounds = JSON.parse(localStorage.getItem("ownedBackgrounds")) || {};
-let activeBackground = localStorage.getItem("activeBackground") || "Light Blue";
-
-let ownedSeasonalBackgrounds = JSON.parse(localStorage.getItem("ownedSeasonalBackgrounds")) || {};
-let activeSeasonalBackground = localStorage.getItem("activeSeasonalBackground") || "";
-
-/******** Achievement Definitions ********/
-const achievements = [
-  // Rarity milestone achievements
-  { id: "first_rare", name: "Getting Started", description: "Unlock your first Rare rarity", icon: "🌟", check: () => logData.includes("Rare") },
-  { id: "first_epic", name: "Epic Discovery", description: "Unlock your first Epic rarity", icon: "💜", check: () => logData.includes("Epic") },
-  { id: "first_legendary", name: "Legendary Hunter", description: "Unlock your first Legendary rarity", icon: "⭐", check: () => logData.includes("Legendary") },
-  { id: "first_mythical", name: "Myth Seeker", description: "Unlock your first Mythical rarity", icon: "🔥", check: () => logData.includes("Mythical") },
-  { id: "first_chroma", name: "Rainbow Chaser", description: "Unlock your first Chroma rarity", icon: "🌈", check: () => logData.includes("Chroma") },
-  { id: "first_ethereal", name: "Beyond Reality", description: "Unlock your first Ethereal rarity", icon: "👻", check: () => logData.includes("Ethereal") },
-  { id: "first_stellar", name: "Star Gazer", description: "Unlock your first Stellar rarity", icon: "✨", check: () => logData.includes("Stellar") },
-  { id: "first_unknown", name: "The Unknown", description: "Unlock the Unknown rarity", icon: "❓", check: () => logData.includes("Unknown") },
-  { id: "glitched", name: "System Error", description: "Unlock the Glitched rarity", icon: "🐛", check: () => logData.includes("Glitched") },
+/******** CLIENT-SIDE DAILY TASKS ********/
+function generateDailyTasks() {
+  const today = new Date().toDateString();
   
-  // Completion percentage achievements
-  { id: "complete_10", name: "Just Beginning", description: "Reach 10% completion", icon: "📊", check: () => calculateCompletionPercentage() >= 10 },
-  { id: "complete_25", name: "Quarter Way", description: "Reach 25% completion", icon: "📈", check: () => calculateCompletionPercentage() >= 25 },
-  { id: "complete_50", name: "Halfway There", description: "Reach 50% completion", icon: "🎯", check: () => calculateCompletionPercentage() >= 50 },
-  { id: "complete_75", name: "Almost Done", description: "Reach 75% completion", icon: "🏆", check: () => calculateCompletionPercentage() >= 75 },
-  { id: "complete_100", name: "Completionist", description: "Reach 100% completion", icon: "👑", check: () => calculateCompletionPercentage() >= 100 },
-  
-  // Shop achievements
-  { id: "first_purchase", name: "First Purchase", description: "Buy your first shop item", icon: "🛒", check: () => Object.keys(purchasedShopItems).length >= 1 },
-  { id: "all_shop", name: "Big Spender", description: "Purchase all shop item types", icon: "💰", check: () => Object.keys(purchasedShopItems).length >= TOTAL_SHOP_ITEMS },
-  
-  // Background achievements
-  { id: "first_bg", name: "Interior Designer", description: "Purchase your first background", icon: "🎨", check: () => Object.keys(ownedBackgrounds).length >= 1 },
-  { id: "all_perm_bg", name: "Background Master", description: "Own all permanent backgrounds", icon: "🖼️", check: () => Object.keys(ownedBackgrounds).length >= TOTAL_PERMANENT_BACKGROUNDS },
-  
-  // Click milestones
-  { id: "clicks_100", name: "Clicker", description: "Reach 100 total clicks", icon: "👆", check: () => totalClicks >= 100 },
-  { id: "clicks_1000", name: "Dedicated Clicker", description: "Reach 1,000 total clicks", icon: "🖱️", check: () => totalClicks >= 1000 },
-  { id: "clicks_10000", name: "Click Master", description: "Reach 10,000 total clicks", icon: "⚡", check: () => totalClicks >= 10000 },
-  
-  // Upstage achievement
-  { id: "first_upstage", name: "New Game+", description: "Upstage for the first time", icon: "🔄", check: () => upstageCount >= 1 }
-];
-
-/******** Leaderboard Data ********/
-// Leaderboard is fetched from server only - no local fallback
-let leaderboardCache = null;
-let leaderboardLastFetch = 0;
-const LEADERBOARD_CACHE_TIME = 30000; // Cache for 30 seconds
-let isLoadingLeaderboard = false;
-
-/******** Helper Functions ********/
-function generatePlayerId() {
-  return 'player_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
-}
-
-function generatePlayerName() {
-  // Generate fun random names
-  const adjectives = ['Swift', 'Lucky', 'Rare', 'Epic', 'Cosmic', 'Stellar', 'Mighty', 'Mystic', 'Golden', 'Crystal'];
-  const nouns = ['Hunter', 'Seeker', 'Finder', 'Explorer', 'Legend', 'Master', 'Champion', 'Voyager', 'Dreamer', 'Wizard'];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 999);
-  return `${adj}${noun}${num}`;
-}
-
-function calculateCompletionPercentage() {
-  // Weight distribution for completion:
-  // - Rarities: 50% (most important)
-  // - Permanent Backgrounds: 25%
-  // - Seasonal Backgrounds: 15%
-  // - Shop Items: 10%
-  
-  const raritiesUnlocked = logData.length;
-  const raritiesWeight = 50;
-  const raritiesPercent = (raritiesUnlocked / TOTAL_RARITIES) * raritiesWeight;
-  
-  const permBgOwned = Object.keys(ownedBackgrounds).length;
-  const permBgWeight = 25;
-  const permBgPercent = (permBgOwned / TOTAL_PERMANENT_BACKGROUNDS) * permBgWeight;
-  
-  const seasonalBgOwned = Object.keys(ownedSeasonalBackgrounds).length;
-  const seasonalBgWeight = 15;
-  const seasonalBgPercent = (seasonalBgOwned / TOTAL_SEASONAL_BACKGROUNDS) * seasonalBgWeight;
-  
-  const shopItemsPurchased = Object.keys(purchasedShopItems).length;
-  const shopWeight = 10;
-  const shopPercent = (shopItemsPurchased / TOTAL_SHOP_ITEMS) * shopWeight;
-  
-  const totalPercent = raritiesPercent + permBgPercent + seasonalBgPercent + shopPercent;
-  
-  return Math.min(100, Math.round(totalPercent * 100) / 100);
-}
-
-function getCompletionBreakdown() {
-  return {
-    rarities: {
-      current: logData.length,
-      total: TOTAL_RARITIES,
-      percent: Math.round((logData.length / TOTAL_RARITIES) * 100)
-    },
-    permanentBackgrounds: {
-      current: Object.keys(ownedBackgrounds).length,
-      total: TOTAL_PERMANENT_BACKGROUNDS,
-      percent: Math.round((Object.keys(ownedBackgrounds).length / TOTAL_PERMANENT_BACKGROUNDS) * 100)
-    },
-    seasonalBackgrounds: {
-      current: Object.keys(ownedSeasonalBackgrounds).length,
-      total: TOTAL_SEASONAL_BACKGROUNDS,
-      percent: Math.round((Object.keys(ownedSeasonalBackgrounds).length / TOTAL_SEASONAL_BACKGROUNDS) * 100)
-    },
-    shopItems: {
-      current: Object.keys(purchasedShopItems).length,
-      total: TOTAL_SHOP_ITEMS,
-      percent: Math.round((Object.keys(purchasedShopItems).length / TOTAL_SHOP_ITEMS) * 100)
-    }
-  };
-}
-
-/******** Achievement System ********/
-function checkAchievements() {
-  achievements.forEach(achievement => {
-    if (!unlockedAchievements.includes(achievement.id) && achievement.check()) {
-      unlockAchievement(achievement);
-    }
-  });
-}
-
-function unlockAchievement(achievement) {
-  if (unlockedAchievements.includes(achievement.id)) return;
-  
-  unlockedAchievements.push(achievement.id);
-  localStorage.setItem("unlockedAchievements", JSON.stringify(unlockedAchievements));
-  
-  // Queue the achievement popup
-  achievementQueue.push(achievement);
-  processAchievementQueue();
-}
-
-function processAchievementQueue() {
-  if (isShowingAchievement || achievementQueue.length === 0) return;
-  
-  isShowingAchievement = true;
-  const achievement = achievementQueue.shift();
-  showAchievementPopup(achievement);
-}
-
-function showAchievementPopup(achievement) {
-  const popup = document.createElement("div");
-  popup.className = "achievement-popup";
-  popup.innerHTML = `
-    <div class="achievement-icon">${achievement.icon}</div>
-    <div class="achievement-content">
-      <div class="achievement-title">Achievement Unlocked!</div>
-      <div class="achievement-name">${achievement.name}</div>
-      <div class="achievement-desc">${achievement.description}</div>
-    </div>
-  `;
-  
-  document.body.appendChild(popup);
-  
-  // Trigger animation
-  setTimeout(() => popup.classList.add("show"), 10);
-  
-  // Remove after delay
-  setTimeout(() => {
-    popup.classList.remove("show");
-    popup.classList.add("hide");
-    setTimeout(() => {
-      popup.remove();
-      isShowingAchievement = false;
-      processAchievementQueue();
-    }, 500);
-  }, 3000);
-}
-
-/******** Leaderboard Functions ********/
-async function updateLeaderboard() {
-  // Sync progress to server which updates leaderboard
-  if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
-    await syncToServer();
-  }
-}
-
-async function fetchLeaderboard() {
-  // Return cached data if fresh enough
-  const now = Date.now();
-  if (leaderboardCache && (now - leaderboardLastFetch) < LEADERBOARD_CACHE_TIME) {
-    return leaderboardCache;
-  }
-  
-  // Fetch from server
-  if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
-    try {
-      const data = await BeyondRareAPI.getLeaderboard('all-time', 100);
-      if (data.success && data.leaderboard) {
-        leaderboardCache = data.leaderboard;
-        leaderboardLastFetch = now;
-        return leaderboardCache;
-      }
-    } catch (error) {
-      console.error('Failed to fetch leaderboard:', error);
-    }
-  }
-  
-  // Return empty if no data
-  return [];
-}
-
-async function displayLeaderboard() {
-  const leaderboardList = document.getElementById("leaderboardList");
-  if (!leaderboardList) return;
-  
-  // Prevent multiple simultaneous loads
-  if (isLoadingLeaderboard) return;
-  
-  // Show loading only if no cache
-  if (!leaderboardCache) {
-    leaderboardList.innerHTML = "<li class='loading'>Loading leaderboard...</li>";
-  }
-  
-  isLoadingLeaderboard = true;
-  const data = await fetchLeaderboard();
-  isLoadingLeaderboard = false;
-  
-  // Clear and rebuild
-  leaderboardList.innerHTML = "";
-  
-  if (!data || data.length === 0) {
-    leaderboardList.innerHTML = "<li class='leaderboard-empty'>No players on the leaderboard yet!</li>";
+  // Check if we already have tasks for today
+  if (gameState.dailyTasksDate === today && gameState.dailyTasks) {
     return;
   }
   
-  const serverPlayerId = typeof BeyondRareAPI !== 'undefined' ? BeyondRareAPI.getPlayerId() : null;
+  // Generate 3 random tasks
+  const taskPool = [
+    { id: 'clicks_50', name: 'Click 50 times', target: 50, type: 'clicks', reward: 100 },
+    { id: 'clicks_100', name: 'Click 100 times', target: 100, type: 'clicks', reward: 250 },
+    { id: 'clicks_500', name: 'Click 500 times', target: 500, type: 'clicks', reward: 750 },
+    { id: 'rare_1', name: 'Find a Rare rarity', target: 1, type: 'findRare', rarity: 'Rare', reward: 150 },
+    { id: 'epic_1', name: 'Find an Epic rarity', target: 1, type: 'findRare', rarity: 'Epic', reward: 500 },
+    { id: 'points_500', name: 'Earn 500 points', target: 500, type: 'points', reward: 200 },
+    { id: 'points_2000', name: 'Earn 2000 points', target: 2000, type: 'points', reward: 600 },
+    { id: 'new_rarity', name: 'Discover a new rarity', target: 1, type: 'newRarity', reward: 300 }
+  ];
   
-  data.forEach((player, index) => {
-    const li = document.createElement("li");
-    li.className = "leaderboard-entry";
+  // Shuffle and pick 3
+  const shuffled = taskPool.sort(() => Math.random() - 0.5);
+  const selectedTasks = shuffled.slice(0, 3).map(task => ({
+    ...task,
+    progress: 0,
+    completed: false,
+    claimed: false
+  }));
+  
+  gameState.dailyTasks = selectedTasks;
+  gameState.dailyTasksDate = today;
+  saveGameState();
+}
+
+function updateDailyTaskProgress(type, value, rarity = null) {
+  if (!gameState.dailyTasks) return;
+  
+  gameState.dailyTasks.forEach(task => {
+    if (task.completed) return;
     
-    // Check if this is the current player
-    const isCurrentPlayer = serverPlayerId && (player.playerId === serverPlayerId || player.id === serverPlayerId);
-    if (isCurrentPlayer) {
-      li.classList.add("leaderboard-self");
+    if (task.type === type) {
+      if (type === 'findRare' && task.rarity !== rarity) return;
+      task.progress = Math.min(task.target, task.progress + value);
+      if (task.progress >= task.target) {
+        task.completed = true;
+      }
     }
-    
-    let rankIcon = "";
-    if (index === 0) rankIcon = "🥇";
-    else if (index === 1) rankIcon = "🥈";
-    else if (index === 2) rankIcon = "🥉";
-    else rankIcon = `#${index + 1}`;
-    
-    const playerName = player.username || player.name || 'Anonymous';
-    const percent = player.completionPercent || player.percent || 0;
-    
-    li.innerHTML = `
-      <span class="leaderboard-rank">${rankIcon}</span>
-      <span class="leaderboard-name">${escapeHtml(playerName)}</span>
-      <span class="leaderboard-percent">${percent.toFixed(1)}%</span>
-    `;
-    
-    leaderboardList.appendChild(li);
   });
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text || '';
-  return div.innerHTML;
-}
-
-async function changePlayerName() {
-  const newName = prompt("Enter your new name (max 20 characters):", playerName);
-  if (newName && newName.trim().length > 0) {
-    const cleanName = newName.trim().substring(0, 20);
-    playerName = cleanName;
-    localStorage.setItem("playerName", playerName);
-    
-    // Update on server too
-    if (typeof BeyondRareAPI !== 'undefined' && BeyondRareAPI.isOnline()) {
-      await BeyondRareAPI.updateUsername(cleanName);
-    }
-    
-    document.getElementById("playerNameDisplay").textContent = playerName;
-    updateStats();
-  }
-}
-
-/******** Timer Update (every 100ms) ********/
-function updateTimer() {
-  if (!timeFreezeActive) {
-    const now = Date.now();
-    const secondsElapsed = ((now - startTime) / 1000).toFixed(1);
-    document.getElementById("timer").innerText = "Time: " + secondsElapsed + "s";
-    localStorage.setItem("startTime", startTime);
-  }
-}
-setInterval(updateTimer, 100);
-
-/******** Display Update Functions ********/
-function updateShopDisplays() {
-  // Update points in both settings and shop modal
-  const pointsDisplay = document.getElementById("pointsDisplay");
-  const shopPointsDisplay = document.getElementById("shopPointsDisplay");
-  if (pointsDisplay) pointsDisplay.innerText = points;
-  if (shopPointsDisplay) shopPointsDisplay.innerText = points;
   
-  // Update auto clicker display with count and speed
-  const autoCountElem = document.getElementById("autoCount");
-  const shopAutoCount = document.getElementById("shopAutoCount");
-  const autoDisplayText = autoClickersCount > 0 
-    ? `${autoClickersCount} (${(getAutoClickerInterval()/1000).toFixed(1)}s)` 
-    : "0";
+  saveGameState();
+  updateTasksDisplay();
+}
+
+function claimTaskReward(taskId) {
+  const task = gameState.dailyTasks?.find(t => t.id === taskId);
+  if (!task || !task.completed || task.claimed) return;
   
-  if (autoCountElem) {
-    if (autoClickersCount > 0) {
-      autoCountElem.innerHTML = `${autoClickersCount} <span class="auto-speed">(${(getAutoClickerInterval()/1000).toFixed(1)}s)</span>`;
+  task.claimed = true;
+  gameState.points += task.reward;
+  saveGameState();
+  updateUI();
+  showNotification(`+${task.reward} points claimed!`);
+}
+
+function claimDailyStreak() {
+  const today = new Date().toDateString();
+  
+  if (gameState.lastStreakClaim === today) {
+    showNotification('Already claimed today!');
+    return;
+  }
+  
+  // Check if streak continues
+  if (gameState.lastStreakClaim) {
+    const lastClaim = new Date(gameState.lastStreakClaim);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (lastClaim.toDateString() === yesterday.toDateString()) {
+      gameState.streakCount++;
     } else {
-      autoCountElem.innerText = "0";
-    }
-  }
-  if (shopAutoCount) shopAutoCount.innerText = autoDisplayText;
-  
-  // Update shop modal status displays
-  const updateElement = (id, value) => {
-    const elem = document.getElementById(id);
-    if (elem) elem.innerText = value;
-  };
-  
-  updateElement("shopDoubleStatus", doublePointsActive ? "On" : "Off");
-  updateElement("shopGoldenStatus", goldenClickReady ? "Ready" : "Not Ready");
-  updateElement("shopLuckBoostStatus", luckBoostActive ? "Active" : "Inactive");
-  updateElement("shopTimeFreezeStatus", timeFreezeActive ? "Active" : "Inactive");
-  updateElement("shopGoldenModeStatus", goldenModeActive ? "Active" : "Inactive");
-  
-  // Update shop button prices
-  const updateBtn = (id, name, price) => {
-    const btn = document.getElementById(id);
-    if (btn) {
-      const priceSpan = btn.querySelector('.shop-item-price');
-      if (priceSpan) {
-        priceSpan.innerText = Math.round(price * shopPriceMultiplier) + " pts";
-      } else {
-        btn.innerText = `Buy ${name} (${Math.round(price * shopPriceMultiplier)} pts)`;
-      }
-    }
-  };
-  
-  updateBtn("autoClickerBtn", "Auto Clicker", SHOP_PRICES.autoClicker);
-  updateBtn("doublePointsBtn", "Double Points", SHOP_PRICES.doublePoints);
-  updateBtn("goldenClickBtn", "Golden Click", SHOP_PRICES.goldenClick);
-  updateBtn("luckBoostBtn", "Luck Boost", SHOP_PRICES.luckBoost);
-  updateBtn("timeFreezeBtn", "Time Freeze", SHOP_PRICES.timeFreeze);
-  updateBtn("goldenModeBtn", "Golden Mode", SHOP_PRICES.goldenMode);
-}
-
-function updateLogElement() {
-  const logElem = document.getElementById("log");
-  logElem.innerHTML = "";
-  logData.sort((a, b) => (rarityPoints[a] || 0) - (rarityPoints[b] || 0));
-  logData.forEach(rarity => {
-    let li = document.createElement("li");
-    li.textContent = rarity;
-    li.className = getClassName(rarity);
-    logElem.appendChild(li);
-  });
-}
-
-function updateStats() {
-  document.getElementById("totalClicks").textContent = totalClicks;
-  let rarestValue = 0, rarest = "None";
-  logData.forEach(rarityName => {
-    let value = rarityPoints[rarityName] || 0;
-    if (value > rarestValue) {
-      rarestValue = value;
-      rarest = rarityName;
-    }
-  });
-  document.getElementById("rarestFind").textContent = rarest;
-  
-  // Update completion percentage display
-  const completionPercent = calculateCompletionPercentage();
-  const completionDisplay = document.getElementById("completionPercent");
-  if (completionDisplay) {
-    completionDisplay.textContent = completionPercent.toFixed(1) + "%";
-  }
-  
-  // Update completion breakdown
-  const breakdown = getCompletionBreakdown();
-  const breakdownElem = document.getElementById("completionBreakdown");
-  if (breakdownElem) {
-    breakdownElem.innerHTML = `
-      <div class="breakdown-item">
-        <span class="breakdown-label">Rarities:</span>
-        <span class="breakdown-value">${breakdown.rarities.current} / ${breakdown.rarities.total}</span>
-        <div class="breakdown-bar"><div class="breakdown-fill" style="width: ${breakdown.rarities.percent}%"></div></div>
-      </div>
-      <div class="breakdown-item">
-        <span class="breakdown-label">Permanent Backgrounds:</span>
-        <span class="breakdown-value">${breakdown.permanentBackgrounds.current} / ${breakdown.permanentBackgrounds.total}</span>
-        <div class="breakdown-bar"><div class="breakdown-fill" style="width: ${breakdown.permanentBackgrounds.percent}%"></div></div>
-      </div>
-      <div class="breakdown-item">
-        <span class="breakdown-label">Seasonal Backgrounds:</span>
-        <span class="breakdown-value">${breakdown.seasonalBackgrounds.current} / ${breakdown.seasonalBackgrounds.total}</span>
-        <div class="breakdown-bar"><div class="breakdown-fill" style="width: ${breakdown.seasonalBackgrounds.percent}%"></div></div>
-      </div>
-      <div class="breakdown-item">
-        <span class="breakdown-label">Shop Items:</span>
-        <span class="breakdown-value">${breakdown.shopItems.current} / ${breakdown.shopItems.total}</span>
-        <div class="breakdown-bar"><div class="breakdown-fill" style="width: ${breakdown.shopItems.percent}%"></div></div>
-      </div>
-    `;
-  }
-  
-  // Update player name display
-  const playerNameDisplay = document.getElementById("playerNameDisplay");
-  if (playerNameDisplay) {
-    playerNameDisplay.textContent = playerName;
-  }
-  
-  // Update achievements display
-  const achievementsElem = document.getElementById("achievementsList");
-  if (achievementsElem) {
-    achievementsElem.innerHTML = "";
-    achievements.forEach(achievement => {
-      const li = document.createElement("li");
-      li.className = "achievement-item";
-      if (unlockedAchievements.includes(achievement.id)) {
-        li.classList.add("unlocked");
-        li.innerHTML = `<span class="ach-icon">${achievement.icon}</span> <span class="ach-name">${achievement.name}</span>`;
-      } else {
-        li.classList.add("locked");
-        li.innerHTML = `<span class="ach-icon">🔒</span> <span class="ach-name">???</span>`;
-      }
-      achievementsElem.appendChild(li);
-    });
-  }
-  
-  const chancesList = document.getElementById("chancesList");
-  chancesList.innerHTML = "";
-  rarities.forEach(rarity => {
-    if (rarity.name === "Glitched" && !logData.includes("Glitched")) return;
-    let li = document.createElement("li");
-    li.textContent = logData.includes(rarity.name)
-      ? (rarity.name + ": " + rarity.chance + "%")
-      : "???";
-    chancesList.appendChild(li);
-  });
-  
-  // Mastery Medals
-  let medal1 = rarities.every(r => logData.includes(r.name)) ? "🏅" : "";
-  let permanentUnlocked = Object.keys(backgroundsPermanent).every(key => ownedBackgrounds[key]);
-  let seasonalMainUnlocked = seasonalMainBackgrounds.every(bg => ownedSeasonalBackgrounds[bg.name]);
-  let seasonalEventUnlocked = seasonalEventBackgrounds.every(bg => ownedSeasonalBackgrounds[bg.name]);
-  let medal2 = (permanentUnlocked && seasonalMainUnlocked && seasonalEventUnlocked) ? "🏅" : "";
-  let medal3 = (upstageCount > 0) ? "🏅" : "";
-  let medals = medal1 + medal2 + medal3;
-  document.getElementById("masteryMedals").innerText = "Mastery Medals: " + medals;
-  
-  // Upstage Button
-  let indexUltraLegendary = rarities.findIndex(r => r.name === "Ultra Legendary");
-  let raritiesUpToUltraLegendary = rarities.filter((r, i) => i <= indexUltraLegendary);
-  let unlockUpstage = raritiesUpToUltraLegendary.every(r => logData.includes(r.name));
-  document.getElementById("upstageButton").style.display = unlockUpstage ? "block" : "none";
-  
-  // Update leaderboard periodically
-  updateLeaderboard();
-  displayLeaderboard();
-}
-
-function getClassName(rarity) {
-  return rarity.toLowerCase().replace(/ /g, "-").replace(/\+/g, "plus");
-}
-
-/******** Rarity Generation ********/
-function generateRarity(isManual = true) {
-  totalClicks++;
-  localStorage.setItem("totalClicks", totalClicks);
-  
-  // Check for Glitched rarity
-  let canGlitch = rarities.filter(r => r.name !== "Glitched").every(r => logData.includes(r.name));
-  if (canGlitch && Math.random() < 0.000005) {
-    if (!logData.includes("Glitched")) {
-      logData.push("Glitched");
-    }
-    let earned = rarityPoints["Glitched"];
-    if (doublePointsActive) earned *= 2;
-    points += earned;
-    localStorage.setItem("logData", JSON.stringify(logData));
-    updateLogElement();
-    updateStats();
-    document.getElementById("result").innerText = "You got: Glitched (+" + earned + " pts)";
-    document.getElementById("result").className = getClassName("Glitched");
-    localStorage.setItem("points", points);
-    updateShopDisplays();
-    checkAchievements();
-    return;
-  }
-  
-  let foundRarity = "";
-  let multiplier = 1;
-  
-  if (isManual && goldenClickReady) {
-    // Golden Click: Guaranteed Epic or above
-    let eligible = rarities.filter(r => r.name !== "Glitched" && (rarityPoints[r.name] || 0) >= rarityPoints["Epic"]);
-    let totalChance = eligible.reduce((sum, r) => sum + r.chance, 0);
-    let roll = Math.random() * totalChance;
-    let cumulative = 0;
-    for (let r of eligible) {
-      cumulative += r.chance;
-      if (roll <= cumulative) {
-        foundRarity = r.name;
-        break;
-      }
-    }
-    goldenClickReady = false;
-  } else if (goldenModeActive) {
-    // Golden Mode: Only Epic or above
-    let eligible = rarities.filter(r => r.name !== "Glitched" && (rarityPoints[r.name] || 0) >= rarityPoints["Epic"]);
-    let totalChance = eligible.reduce((sum, r) => sum + r.chance, 0);
-    let roll = Math.random() * totalChance;
-    let cumulative = 0;
-    for (let r of eligible) {
-      cumulative += r.chance;
-      if (roll <= cumulative) {
-        foundRarity = r.name;
-        break;
-      }
-    }
-  } else if (luckBoostActive) {
-    // Luck Boost: Doubles chances for Uncommon+
-    let modifiedRarities = rarities.filter(r => r.name !== "Glitched").map(r => {
-      if (r.name !== "Average" && r.name !== "Common") {
-        return { name: r.name, chance: r.chance * 2 };
-      }
-      return { name: r.name, chance: r.chance };
-    });
-    let totalChance = modifiedRarities.reduce((sum, r) => sum + r.chance, 0);
-    let roll = Math.random() * totalChance;
-    let cumulative = 0;
-    for (let r of modifiedRarities) {
-      cumulative += r.chance;
-      if (roll <= cumulative) {
-        foundRarity = r.name;
-        break;
-      }
+      gameState.streakCount = 1;
     }
   } else {
-    // Normal rarity generation
-    let normalRarities = rarities.filter(r => r.name !== "Glitched");
-    let totalChance = normalRarities.reduce((sum, r) => sum + r.chance, 0);
-    let roll = Math.random() * totalChance;
-    let cumulative = 0;
-    for (let r of normalRarities) {
-      cumulative += r.chance;
-      if (roll <= cumulative) {
-        foundRarity = r.name;
-        break;
-      }
+    gameState.streakCount = 1;
+  }
+  
+  gameState.lastStreakClaim = today;
+  
+  // Reward based on streak
+  const reward = Math.floor(50 * gameState.streakCount);
+  gameState.points += reward;
+  
+  saveGameState();
+  updateUI();
+  showNotification(`Day ${gameState.streakCount} streak! +${reward} points!`);
+}
+
+/******** STAGE ADVANCEMENT ********/
+function canAdvanceStage() {
+  // Can advance if:
+  // 1. Found all rarities for current stage
+  // 2. Have enough points (points threshold increases each stage)
+  const rarities = getRaritiesForStage(gameState.currentStage);
+  const hasAllRarities = rarities.every(r => gameState.unlockedRarities.includes(r.name));
+  const pointsThreshold = gameState.currentStage * 10000 * Math.pow(2, gameState.currentStage - 1);
+  
+  return hasAllRarities || gameState.points >= pointsThreshold;
+}
+
+function advanceStage() {
+  if (!canAdvanceStage()) return;
+  
+  // Save stage completion to history
+  gameState.stageHistory.push({
+    stage: gameState.currentStage,
+    points: gameState.points,
+    rarities: [...gameState.unlockedRarities],
+    totalClicks: gameState.totalClicks,
+    completedAt: new Date().toISOString()
+  });
+  
+  // Reset points and auto clickers (keep backgrounds, achievements, skins)
+  gameState.currentStage++;
+  gameState.points = 0;
+  gameState.autoClickerCount = 0;
+  gameState.unlockedRarities = [];
+  gameState.totalClicks = 0;
+  gameState.purchaseCount = 0;
+  gameState.activeEffects = {
+    doublePoints: false,
+    goldenClick: false,
+    luckBoost: false,
+    timeFreeze: false,
+    goldenMode: false
+  };
+  
+  stopAutoClickers();
+  saveGameState();
+  updateUI();
+  showNotification(`Welcome to Stage ${gameState.currentStage}!`);
+  checkForStageNotification();
+}
+
+function showStageAdvancePrompt() {
+  const modal = document.getElementById('stageModal');
+  if (modal) modal.style.display = 'block';
+}
+
+/******** CLICK MECHANICS ********/
+function doClick(isManual = true) {
+  gameState.totalClicks++;
+  
+  // Generate rarity
+  const rarities = getRaritiesForStage(gameState.currentStage);
+  let foundRarity = null;
+  
+  // Apply luck boost if active
+  let modifiedRarities = rarities;
+  if (gameState.activeEffects.luckBoost) {
+    modifiedRarities = rarities.map(r => ({
+      ...r,
+      chance: r.points > 0 ? r.chance * 2 : r.chance
+    }));
+  }
+  
+  // Golden mode: only epic+ rarities
+  if (gameState.activeEffects.goldenMode) {
+    modifiedRarities = modifiedRarities.filter(r => r.points >= 100);
+  }
+  
+  // Golden click: guaranteed rare+
+  if (isManual && gameState.activeEffects.goldenClick) {
+    modifiedRarities = modifiedRarities.filter(r => r.points >= 10);
+    gameState.activeEffects.goldenClick = false;
+  }
+  
+  // Roll for rarity
+  const totalChance = modifiedRarities.reduce((sum, r) => sum + r.chance, 0);
+  let roll = Math.random() * totalChance;
+  let cumulative = 0;
+  
+  for (const rarity of modifiedRarities) {
+    cumulative += rarity.chance;
+    if (roll <= cumulative) {
+      foundRarity = rarity;
+      break;
     }
   }
   
-  if (!foundRarity) {
-    foundRarity = "Average";
+  if (!foundRarity) foundRarity = modifiedRarities[0];
+  
+  // Calculate points
+  let earnedPoints = foundRarity.points;
+  if (gameState.activeEffects.doublePoints) {
+    earnedPoints *= 2;
   }
   
-  if (doublePointsActive) multiplier *= 2;
+  gameState.points += earnedPoints;
   
-  let basePoints = rarityPoints[foundRarity] || 0;
-  let earned = basePoints * multiplier;
-  points += earned;
-  localStorage.setItem("points", points);
-  updateShopDisplays();
-  
-  const resultElem = document.getElementById("result");
-  resultElem.innerText = "You got: " + foundRarity + " (+" + earned + " pts)";
-  resultElem.className = getClassName(foundRarity);
-  
-  if (!logData.includes(foundRarity)) {
-    logData.push(foundRarity);
-    localStorage.setItem("logData", JSON.stringify(logData));
-    updateLogElement();
+  // Check if new rarity
+  const isNew = !gameState.unlockedRarities.includes(foundRarity.name);
+  if (isNew) {
+    gameState.unlockedRarities.push(foundRarity.name);
+    updateDailyTaskProgress('newRarity', 1);
+    checkAchievements();
   }
-  updateStats();
-  checkAchievements();
+  
+  // Update daily tasks
+  updateDailyTaskProgress('clicks', 1);
+  updateDailyTaskProgress('points', earnedPoints);
+  updateDailyTaskProgress('findRare', 1, foundRarity.name);
+  
+  saveGameState();
+  showResult(foundRarity, earnedPoints, isNew);
+  updateUI();
+  checkForStageNotification();
+  
+  // Sync to server periodically
+  if (gameState.totalClicks % 50 === 0) {
+    syncStatsToServer();
+  }
 }
 
-/******** Auto Clicker Functions ********/
-const AUTO_CLICKER_BASE_INTERVAL = 2000; // Base: 2 seconds
+function showResult(rarity, points, isNew) {
+  const resultElem = document.getElementById('result');
+  if (!resultElem) return;
+  
+  let text = `You got: ${rarity.name}`;
+  if (points > 0) text += ` (+${points} pts)`;
+  if (isNew) text += ' ✨ NEW!';
+  
+  resultElem.textContent = text;
+  resultElem.style.color = rarity.color;
+  if (rarity.color.includes('gradient')) {
+    resultElem.style.background = rarity.color;
+    resultElem.style.webkitBackgroundClip = 'text';
+    resultElem.style.webkitTextFillColor = 'transparent';
+  } else {
+    resultElem.style.background = 'none';
+    resultElem.style.webkitTextFillColor = rarity.color;
+  }
+}
 
-function getAutoClickerInterval() {
-  // Speed scales with count: more clickers = faster interval
-  // Formula: interval = baseInterval / (1 + 0.5 * (count - 1))
-  // At 1 clicker: 2000ms, at 2: 1333ms, at 3: 1000ms, at 5: 667ms, at 10: 400ms
-  if (autoClickersCount <= 1) return AUTO_CLICKER_BASE_INTERVAL;
-  return Math.max(200, Math.floor(AUTO_CLICKER_BASE_INTERVAL / (1 + 0.5 * (autoClickersCount - 1))));
+/******** AUTO CLICKERS ********/
+let autoClickerInterval = null;
+
+function getAutoClickerSpeed() {
+  // Base: 2 seconds, gets faster with more clickers
+  // Formula: 2000ms / (1 + 0.1 * count), minimum 200ms
+  if (gameState.autoClickerCount <= 0) return 2000;
+  return Math.max(200, Math.floor(2000 / (1 + 0.1 * gameState.autoClickerCount)));
 }
 
 function startAutoClickers() {
-  if (autoClickersCount > 0 && !autoInterval && !timeFreezeActive) {
-    runAutoClicker();
-  }
-}
-
-function runAutoClicker() {
-  if (autoClickersCount <= 0 || timeFreezeActive) {
-    stopAutoClickers();
-    return;
-  }
+  if (gameState.autoClickerCount <= 0 || gameState.activeEffects.timeFreeze) return;
   
-  // Run auto clicks
-  generateRarity(false);
+  stopAutoClickers();
   
-  // Schedule next run with dynamic interval
-  autoInterval = setTimeout(() => {
-    runAutoClicker();
-  }, getAutoClickerInterval());
+  const speed = getAutoClickerSpeed();
+  autoClickerInterval = setInterval(() => {
+    if (!gameState.activeEffects.timeFreeze) {
+      // Each auto clicker does one click per interval
+      for (let i = 0; i < gameState.autoClickerCount; i++) {
+        doClick(false);
+      }
+    }
+  }, speed);
 }
 
 function stopAutoClickers() {
-  if (autoInterval) {
-    clearTimeout(autoInterval);
-    autoInterval = null;
+  if (autoClickerInterval) {
+    clearInterval(autoClickerInterval);
+    autoClickerInterval = null;
   }
 }
 
@@ -810,640 +625,743 @@ function restartAutoClickers() {
   startAutoClickers();
 }
 
-/******** Shop Purchase Functions ********/
+/******** SHOP FUNCTIONS ********/
 function purchaseAutoClicker() {
-  const cost = Math.round(SHOP_PRICES.autoClicker * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    autoClickersCount++;
-    localStorage.setItem("autoClickersCount", autoClickersCount);
-    purchasedShopItems["autoClicker"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    restartAutoClickers(); // Restart with new speed
-    checkAchievements();
-  } else {
-    alert("Not enough pts for Auto Clicker!");
+  if (gameState.autoClickerCount >= gameState.maxAutoClickers) {
+    showNotification('Max auto clickers reached!');
+    return;
   }
+  
+  const price = getAutoClickerPrice();
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
+  }
+  
+  gameState.points -= price;
+  gameState.autoClickerCount++;
+  gameState.purchaseCount++;
+  saveGameState();
+  restartAutoClickers();
+  updateUI();
+  showNotification('Auto Clicker purchased!');
 }
 
 function purchaseDoublePoints() {
-  const cost = Math.round(SHOP_PRICES.doublePoints * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    doublePointsActive = true;
-    purchasedShopItems["doublePoints"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    checkAchievements();
-    setTimeout(() => {
-      doublePointsActive = false;
-      updateShopDisplays();
-    }, 30000);
-  } else {
-    alert("Not enough pts for Double Points!");
+  const price = getItemPrice(BASE_PRICES.doublePoints);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
   }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.activeEffects.doublePoints = true;
+  saveGameState();
+  updateUI();
+  showNotification('Double Points activated for 30s!');
+  
+  setTimeout(() => {
+    gameState.activeEffects.doublePoints = false;
+    saveGameState();
+    updateUI();
+  }, 30000);
 }
 
 function purchaseGoldenClick() {
-  const cost = Math.round(SHOP_PRICES.goldenClick * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    goldenClickReady = true;
-    purchasedShopItems["goldenClick"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    checkAchievements();
-  } else {
-    alert("Not enough pts for Golden Click!");
+  const price = getItemPrice(BASE_PRICES.goldenClick);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
   }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.activeEffects.goldenClick = true;
+  saveGameState();
+  updateUI();
+  showNotification('Golden Click ready! Next click is guaranteed rare+!');
 }
 
 function purchaseLuckBoost() {
-  const cost = Math.round(SHOP_PRICES.luckBoost * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    luckBoostActive = true;
-    purchasedShopItems["luckBoost"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    checkAchievements();
-    setTimeout(() => {
-      luckBoostActive = false;
-      updateShopDisplays();
-    }, 60000);
-  } else {
-    alert("Not enough pts for Luck Boost!");
+  const price = getItemPrice(BASE_PRICES.luckBoost);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
   }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.activeEffects.luckBoost = true;
+  saveGameState();
+  updateUI();
+  showNotification('Luck Boost activated for 60s!');
+  
+  setTimeout(() => {
+    gameState.activeEffects.luckBoost = false;
+    saveGameState();
+    updateUI();
+  }, 60000);
 }
 
 function purchaseTimeFreeze() {
-  const cost = Math.round(SHOP_PRICES.timeFreeze * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    purchasedShopItems["timeFreeze"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    checkAchievements();
-    if (!timeFreezeActive) {
-      timeFreezeActive = true;
-      let freezeStart = Date.now();
-      stopAutoClickers();
-      setTimeout(() => {
-        timeFreezeActive = false;
-        let freezeDuration = Date.now() - freezeStart;
-        startTime += freezeDuration;
-        localStorage.setItem("startTime", startTime);
-        updateShopDisplays();
-        startAutoClickers();
-      }, 30000);
-    }
-  } else {
-    alert("Not enough pts for Time Freeze!");
+  const price = getItemPrice(BASE_PRICES.timeFreeze);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
   }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.activeEffects.timeFreeze = true;
+  stopAutoClickers();
+  saveGameState();
+  updateUI();
+  showNotification('Time Freeze activated for 30s!');
+  
+  setTimeout(() => {
+    gameState.activeEffects.timeFreeze = false;
+    startAutoClickers();
+    saveGameState();
+    updateUI();
+  }, 30000);
 }
 
 function purchaseGoldenMode() {
-  const cost = Math.round(SHOP_PRICES.goldenMode * shopPriceMultiplier);
-  if (points >= cost) {
-    points -= cost;
-    localStorage.setItem("points", points);
-    purchasedShopItems["goldenMode"] = true;
-    localStorage.setItem("purchasedShopItems", JSON.stringify(purchasedShopItems));
-    updateShopDisplays();
-    checkAchievements();
-    if (!goldenModeActive) {
-      goldenModeActive = true;
-      updateShopDisplays();
-      document.body.style.background = "#FFD700";
-      setTimeout(() => {
-        goldenModeActive = false;
-        restoreBackground();
-        updateShopDisplays();
-      }, 30000);
-    }
-  } else {
-    alert("Not enough pts for Golden Mode!");
-  }
-}
-
-/******** Background Shop Functions ********/
-function updateBackgroundShop() {
-  const list = document.getElementById("backgroundShopList");
-  list.innerHTML = "";
-  
-  // Header for Permanent Backgrounds
-  const headerFixed = document.createElement("h5");
-  headerFixed.textContent = "Permanent Backgrounds";
-  list.appendChild(headerFixed);
-  
-  for (const bgName in backgroundsPermanent) {
-    const bgData = backgroundsPermanent[bgName];
-    const li = document.createElement("li");
-    li.style.background = bgData.color;
-    const textOverlay = document.createElement("div");
-    textOverlay.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
-    textOverlay.style.padding = "5px";
-    textOverlay.textContent = `${bgName} - ${bgData.cost} pts (Requires ${bgData.requiredRarity})`;
-    li.appendChild(textOverlay);
-    
-    if (ownedBackgrounds[bgName]) {
-      if (activeBackground === bgName && activeSeasonalBackground === "") {
-        const activeLabel = document.createElement("div");
-        activeLabel.textContent = "Active";
-        activeLabel.style.backgroundColor = "rgba(0,0,0,0.7)";
-        activeLabel.style.color = "white";
-        activeLabel.style.padding = "5px";
-        li.appendChild(activeLabel);
-      } else {
-        const selectBtn = document.createElement("button");
-        selectBtn.textContent = "Select";
-        selectBtn.onclick = () => setBackground(bgName);
-        li.appendChild(selectBtn);
-      }
-    } else {
-      if (points >= bgData.cost && logHasRarity(bgData.requiredRarity)) {
-        const buyBtn = document.createElement("button");
-        buyBtn.textContent = "Buy";
-        buyBtn.onclick = () => purchaseBackground(bgName);
-        li.appendChild(buyBtn);
-      } else {
-        li.classList.add("disabled");
-      }
-    }
-    list.appendChild(li);
+  const price = getItemPrice(BASE_PRICES.goldenMode);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
   }
   
-  // Add Seasonal Backgrounds
-  addSeasonalBackgroundsToShop(list);
-}
-
-function addSeasonalBackgroundsToShop(list) {
-  // Header for Main Seasonal Backgrounds
-  const headerMain = document.createElement("h5");
-  headerMain.textContent = "Seasonal Backgrounds";
-  list.appendChild(headerMain);
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.activeEffects.goldenMode = true;
+  saveGameState();
+  updateUI();
+  showNotification('Golden Mode activated for 30s!');
+  document.body.classList.add('golden-mode');
   
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  
-  let hasSeasonalItems = false;
-  
-  seasonalMainBackgrounds.forEach(bg => {
-    let available = false;
-    if (bg.availableMonths) {
-      if (bg.availableMonths.includes(currentMonth)) {
-        available = true;
-      }
-    } else if (bg.availableDates) {
-      if (now >= bg.availableDates.start && now <= bg.availableDates.end) {
-        available = true;
-      }
-    }
-    if (available) {
-      hasSeasonalItems = true;
-      const li = document.createElement("li");
-      li.style.background = bg.color;
-      li.style.position = "relative";
-      const textOverlay = document.createElement("div");
-      textOverlay.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
-      textOverlay.style.padding = "5px";
-      textOverlay.textContent = `${bg.name} - ${bg.cost} pts`;
-      li.appendChild(textOverlay);
-      
-      if (ownedSeasonalBackgrounds[bg.name]) {
-        if (activeSeasonalBackground === bg.name) {
-          const activeLabel = document.createElement("div");
-          activeLabel.textContent = "Active";
-          activeLabel.style.backgroundColor = "rgba(0,0,0,0.7)";
-          activeLabel.style.color = "white";
-          activeLabel.style.padding = "5px";
-          li.appendChild(activeLabel);
-        } else {
-          const selectBtn = document.createElement("button");
-          selectBtn.textContent = "Select";
-          selectBtn.onclick = () => setSeasonalBackground(bg.name, bg.color);
-          li.appendChild(selectBtn);
-        }
-      } else {
-        if (points >= bg.cost) {
-          const buyBtn = document.createElement("button");
-          buyBtn.textContent = "Buy";
-          buyBtn.onclick = () => {
-            points -= bg.cost;
-            localStorage.setItem("points", points);
-            ownedSeasonalBackgrounds[bg.name] = true;
-            localStorage.setItem("ownedSeasonalBackgrounds", JSON.stringify(ownedSeasonalBackgrounds));
-            updateShopDisplays();
-            updateBackgroundShop();
-            checkAchievements();
-          };
-          li.appendChild(buyBtn);
-        } else {
-          li.classList.add("disabled");
-        }
-      }
-      list.appendChild(li);
-    }
-  });
-  
-  if (!hasSeasonalItems) {
-    const noItems = document.createElement("li");
-    noItems.textContent = "No seasonal backgrounds available this month.";
-    noItems.style.fontStyle = "italic";
-    list.appendChild(noItems);
-  }
-  
-  // Header for Special Event Backgrounds
-  const headerEvent = document.createElement("h5");
-  headerEvent.textContent = "Special Event Backgrounds";
-  list.appendChild(headerEvent);
-  
-  let hasEventItems = false;
-  
-  seasonalEventBackgrounds.forEach(bg => {
-    let available = false;
-    if (bg.availableDates) {
-      if (now >= bg.availableDates.start && now <= bg.availableDates.end) {
-        available = true;
-      }
-    } else if (bg.availableMonths) {
-      if (bg.availableMonths.includes(currentMonth)) {
-        available = true;
-      }
-    }
-    if (available) {
-      hasEventItems = true;
-      const li = document.createElement("li");
-      li.style.background = bg.color;
-      li.style.position = "relative";
-      const limitedIcon = document.createElement("div");
-      limitedIcon.textContent = "🕘";
-      limitedIcon.className = "seasonal-event-icon";
-      li.appendChild(limitedIcon);
-      
-      const textOverlay = document.createElement("div");
-      textOverlay.style.backgroundColor = "rgba(255, 255, 255, 0.7)";
-      textOverlay.style.padding = "5px";
-      textOverlay.textContent = `${bg.name} - ${bg.cost} pts`;
-      li.appendChild(textOverlay);
-      
-      if (ownedSeasonalBackgrounds[bg.name]) {
-        if (activeSeasonalBackground === bg.name) {
-          const activeLabel = document.createElement("div");
-          activeLabel.textContent = "Active";
-          activeLabel.style.backgroundColor = "rgba(0,0,0,0.7)";
-          activeLabel.style.color = "white";
-          activeLabel.style.padding = "5px";
-          li.appendChild(activeLabel);
-        } else {
-          const selectBtn = document.createElement("button");
-          selectBtn.textContent = "Select";
-          selectBtn.onclick = () => setSeasonalBackground(bg.name, bg.color);
-          li.appendChild(selectBtn);
-        }
-      } else {
-        if (points >= bg.cost) {
-          const buyBtn = document.createElement("button");
-          buyBtn.textContent = "Buy";
-          buyBtn.onclick = () => {
-            points -= bg.cost;
-            localStorage.setItem("points", points);
-            ownedSeasonalBackgrounds[bg.name] = true;
-            localStorage.setItem("ownedSeasonalBackgrounds", JSON.stringify(ownedSeasonalBackgrounds));
-            updateShopDisplays();
-            updateBackgroundShop();
-            checkAchievements();
-          };
-          li.appendChild(buyBtn);
-        } else {
-          li.classList.add("disabled");
-        }
-      }
-      list.appendChild(li);
-    }
-  });
-  
-  if (!hasEventItems) {
-    const noItems = document.createElement("li");
-    noItems.textContent = "No special event backgrounds available right now.";
-    noItems.style.fontStyle = "italic";
-    list.appendChild(noItems);
-  }
+  setTimeout(() => {
+    gameState.activeEffects.goldenMode = false;
+    document.body.classList.remove('golden-mode');
+    saveGameState();
+    updateUI();
+  }, 30000);
 }
 
 function purchaseBackground(bgName) {
-  const bgData = backgroundsPermanent[bgName];
-  if (!bgData || points < bgData.cost || !logHasRarity(bgData.requiredRarity)) return;
-  points -= bgData.cost;
-  localStorage.setItem("points", points);
-  ownedBackgrounds[bgName] = true;
-  localStorage.setItem("ownedBackgrounds", JSON.stringify(ownedBackgrounds));
-  updateShopDisplays();
-  updateBackgroundShop();
-  checkAchievements();
+  const bg = BACKGROUNDS[bgName];
+  if (!bg) return;
+  
+  if (gameState.currentStage < bg.requiredStage) {
+    showNotification(`Requires Stage ${bg.requiredStage}!`);
+    return;
+  }
+  
+  const price = getItemPrice(bg.cost);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
+  }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.ownedBackgrounds[bgName] = true;
+  saveGameState();
+  updateUI();
+  showNotification(`${bgName} background purchased!`);
 }
 
 function setBackground(bgName) {
-  if (!ownedBackgrounds[bgName]) return;
-  activeBackground = bgName;
-  activeSeasonalBackground = "";
-  localStorage.setItem("activeBackground", bgName);
-  localStorage.setItem("activeSeasonalBackground", "");
-  if (backgroundsPermanent[bgName]) {
-    document.body.style.background = backgroundsPermanent[bgName].color;
-  } else {
-    document.body.style.background = "";
+  if (bgName === 'default') {
+    gameState.activeBackground = 'default';
+    document.body.style.background = 'linear-gradient(135deg, #e0f7fa, #fce4ec)';
+  } else if (gameState.ownedBackgrounds[bgName]) {
+    gameState.activeBackground = bgName;
+    document.body.style.background = BACKGROUNDS[bgName].color;
   }
-  updateBackgroundShop();
+  saveGameState();
+  updateUI();
 }
 
-function setSeasonalBackground(bgName, color) {
-  activeSeasonalBackground = bgName;
-  localStorage.setItem("activeSeasonalBackground", bgName);
-  document.body.style.background = color;
-  updateBackgroundShop();
-}
-
-function logHasRarity(requiredRarity) {
-  return logData.includes(requiredRarity);
-}
-
-/******** Modal Close on Outside Click ********/
-function setupModalCloseOnOutsideClick() {
-  const modals = document.querySelectorAll('.modal');
+function purchaseSkin(skinId) {
+  const skin = BUTTON_SKINS[skinId];
+  if (!skin || skinId === 'default') return;
   
-  modals.forEach(modal => {
+  const price = getItemPrice(skin.cost);
+  if (gameState.points < price) {
+    showNotification('Not enough points!');
+    return;
+  }
+  
+  gameState.points -= price;
+  gameState.purchaseCount++;
+  gameState.ownedSkins[skinId] = true;
+  saveGameState();
+  updateUI();
+  showNotification(`${skin.name} skin purchased!`);
+}
+
+function setSkin(skinId) {
+  const skin = BUTTON_SKINS[skinId];
+  if (!skin) return;
+  if (skinId !== 'default' && !gameState.ownedSkins[skinId]) return;
+  
+  gameState.activeSkin = skinId;
+  const btn = document.getElementById('clickButton');
+  if (btn) btn.style.background = skin.gradient;
+  saveGameState();
+}
+
+/******** ACHIEVEMENTS ********/
+const ACHIEVEMENTS_DEF = [
+  { id: 'first_click', name: 'First Click', desc: 'Click for the first time', check: () => gameState.totalClicks >= 1 },
+  { id: 'clicks_100', name: 'Clicker', desc: 'Click 100 times', check: () => gameState.totalClicks >= 100 },
+  { id: 'clicks_1000', name: 'Click Master', desc: 'Click 1,000 times', check: () => gameState.totalClicks >= 1000 },
+  { id: 'clicks_10000', name: 'Click Legend', desc: 'Click 10,000 times', check: () => gameState.totalClicks >= 10000 },
+  { id: 'rare_find', name: 'Rare Hunter', desc: 'Find a Rare rarity', check: () => gameState.unlockedRarities.includes('Rare') },
+  { id: 'epic_find', name: 'Epic Discovery', desc: 'Find an Epic rarity', check: () => gameState.unlockedRarities.includes('Epic') },
+  { id: 'legendary_find', name: 'Legendary', desc: 'Find a Legendary rarity', check: () => gameState.unlockedRarities.includes('Legendary') },
+  { id: 'stage_2', name: 'Stage 2', desc: 'Reach Stage 2', check: () => gameState.currentStage >= 2 },
+  { id: 'stage_5', name: 'Halfway', desc: 'Reach Stage 5', check: () => gameState.currentStage >= 5 },
+  { id: 'stage_10', name: 'Endgame', desc: 'Reach Stage 10', check: () => gameState.currentStage >= 10 },
+  { id: 'auto_10', name: 'Automation', desc: 'Own 10 auto clickers', check: () => gameState.autoClickerCount >= 10 },
+  { id: 'auto_50', name: 'Factory', desc: 'Own 50 auto clickers', check: () => gameState.autoClickerCount >= 50 },
+  { id: 'auto_100', name: 'Automation Master', desc: 'Own 100 auto clickers', check: () => gameState.autoClickerCount >= 100 },
+  { id: 'streak_7', name: 'Week Streak', desc: 'Get a 7-day streak', check: () => gameState.streakCount >= 7 },
+  { id: 'streak_30', name: 'Month Streak', desc: 'Get a 30-day streak', check: () => gameState.streakCount >= 30 }
+];
+
+function checkAchievements() {
+  ACHIEVEMENTS_DEF.forEach(ach => {
+    if (!gameState.achievements.includes(ach.id) && ach.check()) {
+      gameState.achievements.push(ach.id);
+      showNotification(`Achievement Unlocked: ${ach.name}!`);
+    }
+  });
+  saveGameState();
+}
+
+/******** UI UPDATES ********/
+function updateUI() {
+  // Points
+  const pointsDisplay = document.getElementById('pointsDisplay');
+  const shopPointsDisplay = document.getElementById('shopPointsDisplay');
+  if (pointsDisplay) pointsDisplay.textContent = formatNumber(gameState.points);
+  if (shopPointsDisplay) shopPointsDisplay.textContent = formatNumber(gameState.points);
+  
+  // Stage
+  const stageDisplay = document.getElementById('stageDisplay');
+  if (stageDisplay) stageDisplay.textContent = `Stage ${gameState.currentStage}`;
+  
+  // Auto clickers
+  const autoCount = document.getElementById('autoCount');
+  const shopAutoCount = document.getElementById('shopAutoCount');
+  if (autoCount) autoCount.textContent = `${gameState.autoClickerCount}/${gameState.maxAutoClickers}`;
+  if (shopAutoCount) shopAutoCount.textContent = `${gameState.autoClickerCount}/${gameState.maxAutoClickers}`;
+  
+  // Username
+  const usernameDisplay = document.getElementById('playerNameDisplay');
+  if (usernameDisplay) usernameDisplay.textContent = gameState.username;
+  
+  // Streak
+  const streakCount = document.getElementById('streakCount');
+  if (streakCount) streakCount.textContent = gameState.streakCount;
+  
+  // Total clicks
+  const totalClicksDisplay = document.getElementById('totalClicks');
+  if (totalClicksDisplay) totalClicksDisplay.textContent = formatNumber(gameState.totalClicks);
+  
+  // Completion
+  const completionDisplay = document.getElementById('completionPercent');
+  if (completionDisplay) completionDisplay.textContent = calculateCompletionPercent().toFixed(1) + '%';
+  
+  // Update shop prices
+  updateShopPrices();
+  
+  // Update rarity log
+  updateRarityLog();
+  
+  // Update active effects display
+  updateEffectsDisplay();
+  
+  // Update tasks display
+  updateTasksDisplay();
+}
+
+function updateShopPrices() {
+  const priceUpdates = [
+    ['autoClickerBtn', getAutoClickerPrice()],
+    ['doublePointsBtn', getItemPrice(BASE_PRICES.doublePoints)],
+    ['goldenClickBtn', getItemPrice(BASE_PRICES.goldenClick)],
+    ['luckBoostBtn', getItemPrice(BASE_PRICES.luckBoost)],
+    ['timeFreezeBtn', getItemPrice(BASE_PRICES.timeFreeze)],
+    ['goldenModeBtn', getItemPrice(BASE_PRICES.goldenMode)]
+  ];
+  
+  priceUpdates.forEach(([id, price]) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      const priceSpan = btn.querySelector('.shop-item-price');
+      if (priceSpan) priceSpan.textContent = formatNumber(price) + ' pts';
+    }
+  });
+}
+
+function updateRarityLog() {
+  const logElem = document.getElementById('log');
+  if (!logElem) return;
+  
+  logElem.innerHTML = '';
+  const rarities = getRaritiesForStage(gameState.currentStage);
+  
+  // Sort by points (rarity)
+  const sortedUnlocked = gameState.unlockedRarities
+    .map(name => rarities.find(r => r.name === name))
+    .filter(Boolean)
+    .sort((a, b) => a.points - b.points);
+  
+  sortedUnlocked.forEach(rarity => {
+    const li = document.createElement('li');
+    li.textContent = rarity.name;
+    li.style.color = rarity.color;
+    if (rarity.color.includes('gradient')) {
+      li.style.background = rarity.color;
+      li.style.webkitBackgroundClip = 'text';
+      li.style.webkitTextFillColor = 'transparent';
+    }
+    logElem.appendChild(li);
+  });
+}
+
+function updateEffectsDisplay() {
+  const effects = gameState.activeEffects;
+  
+  const updates = [
+    ['shopDoubleStatus', effects.doublePoints ? 'Active' : 'Off'],
+    ['shopGoldenStatus', effects.goldenClick ? 'Ready!' : 'Off'],
+    ['shopLuckBoostStatus', effects.luckBoost ? 'Active' : 'Off'],
+    ['shopTimeFreezeStatus', effects.timeFreeze ? 'Active' : 'Off'],
+    ['shopGoldenModeStatus', effects.goldenMode ? 'Active' : 'Off']
+  ];
+  
+  updates.forEach(([id, status]) => {
+    const elem = document.getElementById(id);
+    if (elem) elem.textContent = status;
+  });
+}
+
+function updateTasksDisplay() {
+  const tasksProgress = document.getElementById('challengesProgress');
+  if (tasksProgress && gameState.dailyTasks) {
+    const completed = gameState.dailyTasks.filter(t => t.completed).length;
+    tasksProgress.textContent = `${completed}/3`;
+  }
+}
+
+function checkForStageNotification() {
+  if (canAdvanceStage() && !document.getElementById('stageNotification')) {
+    showStageNotification();
+  }
+}
+
+function showStageNotification() {
+  const existing = document.getElementById('stageNotification');
+  if (existing) existing.remove();
+  
+  const notif = document.createElement('div');
+  notif.id = 'stageNotification';
+  notif.className = 'stage-notification';
+  notif.innerHTML = `
+    <span>🎉 Ready to advance to Stage ${gameState.currentStage + 1}!</span>
+    <button onclick="advanceStage()">Go to Next Stage</button>
+    <button onclick="this.parentElement.remove()">Later</button>
+  `;
+  document.body.appendChild(notif);
+}
+
+function showNotification(message) {
+  const notif = document.createElement('div');
+  notif.className = 'toast-notification';
+  notif.textContent = message;
+  document.body.appendChild(notif);
+  
+  setTimeout(() => notif.classList.add('show'), 10);
+  setTimeout(() => {
+    notif.classList.remove('show');
+    setTimeout(() => notif.remove(), 500);
+  }, 3000);
+}
+
+function formatNumber(num) {
+  if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+  if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+  return num.toString();
+}
+
+function calculateCompletionPercent() {
+  const rarities = getRaritiesForStage(gameState.currentStage);
+  const found = gameState.unlockedRarities.filter(r => rarities.some(rr => rr.name === r)).length;
+  return (found / rarities.length) * 100;
+}
+
+/******** MODALS ********/
+function toggleShopModal() {
+  const modal = document.getElementById('shopModal');
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+  if (modal.style.display === 'block') {
+    updateShopModal();
+  }
+}
+
+function updateShopModal() {
+  updateUI();
+  updateBackgroundShop();
+  updateSkinShop();
+}
+
+function updateBackgroundShop() {
+  const container = document.getElementById('backgroundShopList');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  Object.entries(BACKGROUNDS).forEach(([name, bg]) => {
+    const li = document.createElement('li');
+    li.className = 'bg-shop-item';
+    li.style.background = bg.color;
+    
+    const info = document.createElement('div');
+    info.className = 'bg-info';
+    info.innerHTML = `
+      <span class="bg-name">${name}</span>
+      <span class="bg-price">${formatNumber(getItemPrice(bg.cost))} pts</span>
+      <span class="bg-stage">Stage ${bg.requiredStage}+</span>
+    `;
+    li.appendChild(info);
+    
+    if (gameState.ownedBackgrounds[name]) {
+      if (gameState.activeBackground === name) {
+        const badge = document.createElement('span');
+        badge.className = 'active-badge';
+        badge.textContent = 'Active';
+        li.appendChild(badge);
+      } else {
+        const btn = document.createElement('button');
+        btn.textContent = 'Use';
+        btn.onclick = () => setBackground(name);
+        li.appendChild(btn);
+      }
+    } else {
+      const btn = document.createElement('button');
+      btn.textContent = 'Buy';
+      btn.disabled = gameState.currentStage < bg.requiredStage || gameState.points < getItemPrice(bg.cost);
+      btn.onclick = () => purchaseBackground(name);
+      li.appendChild(btn);
+    }
+    
+    container.appendChild(li);
+  });
+}
+
+function updateSkinShop() {
+  const container = document.getElementById('skinsGrid');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  Object.entries(BUTTON_SKINS).forEach(([id, skin]) => {
+    const div = document.createElement('div');
+    div.className = 'skin-item';
+    div.style.background = skin.gradient;
+    
+    div.innerHTML = `
+      <span class="skin-name">${skin.name}</span>
+      <span class="skin-price">${id === 'default' ? 'Free' : formatNumber(getItemPrice(skin.cost)) + ' pts'}</span>
+    `;
+    
+    const owned = id === 'default' || gameState.ownedSkins[id];
+    
+    if (owned) {
+      if (gameState.activeSkin === id) {
+        div.classList.add('active');
+      } else {
+        div.onclick = () => setSkin(id);
+        div.style.cursor = 'pointer';
+      }
+    } else {
+      div.classList.add('locked');
+      const buyBtn = document.createElement('button');
+      buyBtn.textContent = 'Buy';
+      buyBtn.onclick = (e) => {
+        e.stopPropagation();
+        purchaseSkin(id);
+      };
+      div.appendChild(buyBtn);
+    }
+    
+    container.appendChild(div);
+  });
+}
+
+function toggleSettingsModal() {
+  const modal = document.getElementById('settingsModal');
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+  if (modal.style.display === 'block') {
+    updateSettingsModal();
+  }
+}
+
+function updateSettingsModal() {
+  updateUI();
+  updateAchievementsList();
+  updateStatsDisplay();
+}
+
+function updateAchievementsList() {
+  const container = document.getElementById('achievementsList');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  ACHIEVEMENTS_DEF.forEach(ach => {
+    const li = document.createElement('li');
+    li.className = 'achievement-item';
+    
+    if (gameState.achievements.includes(ach.id)) {
+      li.classList.add('unlocked');
+      li.innerHTML = `<span class="ach-icon">⭐</span> <span class="ach-name">${ach.name}</span>`;
+    } else {
+      li.classList.add('locked');
+      li.innerHTML = `<span class="ach-icon">🔒</span> <span class="ach-name">???</span>`;
+    }
+    container.appendChild(li);
+  });
+}
+
+function updateStatsDisplay() {
+  const rarities = getRaritiesForStage(gameState.currentStage);
+  const chancesList = document.getElementById('chancesList');
+  if (chancesList) {
+    chancesList.innerHTML = '';
+    rarities.forEach(r => {
+      const li = document.createElement('li');
+      if (gameState.unlockedRarities.includes(r.name)) {
+        li.textContent = `${r.name}: ${r.chance}% (${r.points} pts)`;
+        li.style.color = r.color;
+      } else {
+        li.textContent = '???';
+        li.style.color = '#999';
+      }
+      chancesList.appendChild(li);
+    });
+  }
+}
+
+function toggleLeaderboardModal() {
+  const modal = document.getElementById('leaderboardModal');
+  const isOpening = modal.style.display !== 'block';
+  modal.style.display = isOpening ? 'block' : 'none';
+  
+  if (isOpening) {
+    fetchLeaderboard();
+  }
+}
+
+async function fetchLeaderboard() {
+  const list = document.getElementById('leaderboardList');
+  if (!list) return;
+  
+  list.innerHTML = '<li class="loading">Loading...</li>';
+  
+  try {
+    const response = await fetch('/api/leaderboard');
+    const data = await response.json();
+    
+    if (data.success && data.leaderboard) {
+      displayLeaderboard(data.leaderboard);
+    } else {
+      list.innerHTML = '<li class="error">Failed to load leaderboard</li>';
+    }
+  } catch (error) {
+    list.innerHTML = '<li class="error">Server not available</li>';
+  }
+}
+
+function displayLeaderboard(leaderboard) {
+  const list = document.getElementById('leaderboardList');
+  if (!list) return;
+  
+  list.innerHTML = '';
+  
+  if (leaderboard.length === 0) {
+    list.innerHTML = '<li class="empty">No players yet!</li>';
+    return;
+  }
+  
+  leaderboard.forEach((player, index) => {
+    const li = document.createElement('li');
+    li.className = 'leaderboard-entry';
+    
+    if (player.userId === gameState.userId) {
+      li.classList.add('leaderboard-self');
+    }
+    
+    let rankIcon = '';
+    if (index === 0) rankIcon = '🥇';
+    else if (index === 1) rankIcon = '🥈';
+    else if (index === 2) rankIcon = '🥉';
+    else rankIcon = `#${index + 1}`;
+    
+    li.innerHTML = `
+      <span class="leaderboard-rank">${rankIcon}</span>
+      <span class="leaderboard-name">${escapeHtml(player.username)}</span>
+      <span class="leaderboard-stage">Stage ${player.currentStage}</span>
+      <span class="leaderboard-percent">${player.completionPercent.toFixed(1)}%</span>
+    `;
+    
+    list.appendChild(li);
+  });
+}
+
+function toggleChallengesModal() {
+  const modal = document.getElementById('challengesModal');
+  const isOpening = modal.style.display !== 'block';
+  modal.style.display = isOpening ? 'block' : 'none';
+  
+  if (isOpening) {
+    displayChallenges();
+  }
+}
+
+function displayChallenges() {
+  generateDailyTasks();
+  
+  const dateElem = document.getElementById('challengesDate');
+  if (dateElem) dateElem.textContent = `Daily Challenges - ${new Date().toLocaleDateString()}`;
+  
+  const list = document.getElementById('challengesList');
+  if (!list) return;
+  
+  list.innerHTML = '';
+  
+  gameState.dailyTasks.forEach(task => {
+    const li = document.createElement('li');
+    li.className = task.completed ? 'completed' : '';
+    
+    const progressPercent = Math.min(100, (task.progress / task.target) * 100);
+    
+    li.innerHTML = `
+      <div class="challenge-header">
+        <span class="challenge-name">${task.name}</span>
+        <span class="challenge-reward">+${task.reward} pts</span>
+      </div>
+      <div class="challenge-progress-bar">
+        <div class="challenge-progress-fill" style="width: ${progressPercent}%"></div>
+      </div>
+      <div class="challenge-progress-text">${task.progress} / ${task.target}</div>
+      ${task.completed && !task.claimed ? `<button onclick="claimTaskReward('${task.id}')">Claim</button>` : ''}
+      ${task.claimed ? '<span class="claimed">✓ Claimed</span>' : ''}
+    `;
+    
+    list.appendChild(li);
+  });
+}
+
+function toggleStreakModal() {
+  const modal = document.getElementById('streakModal');
+  const isOpening = modal.style.display !== 'block';
+  modal.style.display = isOpening ? 'block' : 'none';
+  
+  if (isOpening) {
+    displayStreak();
+  }
+}
+
+function displayStreak() {
+  const currentStreak = document.getElementById('currentStreak');
+  if (currentStreak) currentStreak.textContent = gameState.streakCount;
+  
+  const claimBtn = document.getElementById('claimStreakBtn');
+  if (claimBtn) {
+    const today = new Date().toDateString();
+    if (gameState.lastStreakClaim === today) {
+      claimBtn.disabled = true;
+      claimBtn.textContent = 'Already Claimed Today';
+    } else {
+      claimBtn.disabled = false;
+      claimBtn.textContent = 'Claim Daily Streak!';
+    }
+  }
+}
+
+function toggleSkinsModal() {
+  const modal = document.getElementById('skinsModal');
+  modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+  if (modal.style.display === 'block') {
+    updateSkinShop();
+  }
+}
+
+function changePlayerName() {
+  const newName = prompt('Enter your new name (max 20 characters):', gameState.username);
+  if (newName && newName.trim().length > 0) {
+    gameState.username = newName.trim().substring(0, 20);
+    saveGameState();
+    updateUsernameOnServer();
+    updateUI();
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+function resetGame() {
+  if (confirm('Are you sure? This will reset EVERYTHING including stages!')) {
+    localStorage.removeItem('beyondRareState');
+    location.reload();
+  }
+}
+
+/******** MODAL CLOSE HANDLERS ********/
+function setupModalCloseHandlers() {
+  document.querySelectorAll('.modal').forEach(modal => {
     modal.addEventListener('click', (e) => {
-      // Only close if clicking the modal backdrop (not the content)
       if (e.target === modal) {
         modal.style.display = 'none';
       }
     });
   });
   
-  // Also close modals with Escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      modals.forEach(modal => {
-        if (modal.style.display === 'block') {
-          modal.style.display = 'none';
-        }
+      document.querySelectorAll('.modal').forEach(modal => {
+        modal.style.display = 'none';
       });
     }
   });
 }
 
-/******** Modal & Reset Functions ********/
-function toggleShopModal() {
-  const modal = document.getElementById("shopModal");
-  modal.style.display = (modal.style.display === "block") ? "none" : "block";
-  updateShopDisplays();
-}
+/******** CONNECTION STATUS ********/
+let isOnline = true;
 
-function toggleSettingsModal() {
-  const modal = document.getElementById("settingsModal");
-  modal.style.display = (modal.style.display === "block") ? "none" : "block";
-  updateShopDisplays();
-  updateBackgroundShop();
-  updateStats();
-}
-
-function toggleLeaderboardModal() {
-  const modal = document.getElementById("leaderboardModal");
-  const isOpening = modal.style.display !== "block";
-  modal.style.display = isOpening ? "block" : "none";
-  
-  // Only fetch leaderboard when opening the modal
-  if (isOpening) {
-    displayLeaderboard();
-  }
-}
-
-function resetGame() {
-  if (confirm("Are you sure you want to reset the game? This will clear all progress.")) {
-    points = 0;
-    localStorage.setItem("points", points);
-    autoClickersCount = 0;
-    localStorage.setItem("autoClickersCount", 0);
-    doublePointsActive = false;
-    goldenClickReady = false;
-    luckBoostActive = false;
-    timeFreezeActive = false;
-    goldenModeActive = false;
-    ownedBackgrounds = {};
-    activeBackground = "Light Blue";
-    localStorage.removeItem("ownedBackgrounds");
-    localStorage.removeItem("activeBackground");
-    localStorage.removeItem("logData");
-    localStorage.removeItem("totalClicks");
-    localStorage.removeItem("shopPriceMultiplier");
-    localStorage.removeItem("upstageCount");
-    localStorage.removeItem("purchasedShopItems");
-    localStorage.removeItem("unlockedAchievements");
-    shopPriceMultiplier = 1;
-    upstageCount = 0;
-    logData = [];
-    totalClicks = 0;
-    purchasedShopItems = {};
-    unlockedAchievements = [];
-    ownedSeasonalBackgrounds = {};
-    localStorage.removeItem("ownedSeasonalBackgrounds");
-    activeSeasonalBackground = "";
-    localStorage.removeItem("activeSeasonalBackground");
-    stopAutoClickers();
-    document.getElementById("log").innerHTML = "";
-    updateShopDisplays();
-    startTime = Date.now();
-    localStorage.setItem("startTime", startTime);
-    setDefaultBackground();
-    updateBackgroundShop();
-    updateStats();
-  }
-}
-
-/******** Background Utility Functions ********/
-function setDefaultBackground() {
-  document.body.style.background = "linear-gradient(135deg, #e0f7fa, #fce4ec)";
-}
-
-function restoreBackground() {
-  if (activeSeasonalBackground) {
-    let seasonalBg = seasonalMainBackgrounds.find(bg => bg.name === activeSeasonalBackground);
-    if (!seasonalBg) {
-      seasonalBg = seasonalEventBackgrounds.find(bg => bg.name === activeSeasonalBackground);
-    }
-    if (seasonalBg) {
-      document.body.style.background = seasonalBg.color;
-      return;
-    }
-  }
-  if (activeBackground && backgroundsPermanent[activeBackground]) {
-    document.body.style.background = backgroundsPermanent[activeBackground].color;
-  } else {
-    setDefaultBackground();
-  }
-}
-
-/******** Upstage Function ********/
-function upstageGame() {
-  if (confirm("Upstage? This will reset your rarity log and stats but keep your backgrounds. Shop prices will increase by 50%. Continue?")) {
-    logData = [];
-    totalClicks = 0;
-    localStorage.setItem("logData", JSON.stringify(logData));
-    localStorage.setItem("totalClicks", totalClicks);
-    shopPriceMultiplier *= 1.5;
-    localStorage.setItem("shopPriceMultiplier", shopPriceMultiplier);
-    upstageCount++;
-    localStorage.setItem("upstageCount", upstageCount);
-    document.getElementById("log").innerHTML = "";
-    updateStats();
-    updateShopDisplays();
-    checkAchievements();
-  }
-}
-
-/******** Initialization ********/
-function init() {
-  // Set up player name display
-  document.getElementById("playerNameDisplay").textContent = playerName;
-  
-  updateShopDisplays();
-  updateLogElement();
-  updateStats();
-  restoreBackground();
-  startAutoClickers(); // Start auto clickers immediately
-  checkAchievements();
-  
-  // Set up modal close on outside click
-  setupModalCloseOnOutsideClick();
-  
-  // Initialize server connection (non-blocking - game works without server)
-  initServerConnection();
-}
-
-/******** Server Connection & Daily Features ********/
-async function initServerConnection() {
-  // Check if API is available
-  if (typeof BeyondRareAPI === 'undefined') {
-    console.log('API client not loaded');
-    updateConnectionStatus(false);
-    return;
-  }
-  
-  // Try to connect to server - but don't block gameplay if it fails
+async function checkConnection() {
   try {
-    const health = await BeyondRareAPI.checkHealth();
-    
-    if (health.success) {
-      connectionFailCount = 0;
-      lastSuccessfulCheck = Date.now();
-      isGameOnline = true;
-      updateConnectionStatus(true);
-      
-      // Sync local progress to server
-      await syncToServer();
-      
-      // Load streak and challenges
-      await loadStreak();
-      await loadChallenges();
-    } else {
-      // Server not responding properly - run in local mode
-      console.log('Server health check failed, running locally');
-      updateConnectionStatus(false);
-    }
-  } catch (error) {
-    // Server not available - run in local mode (don't block gameplay!)
-    console.log('Server not available, running locally:', error.message);
-    updateConnectionStatus(false);
-  }
-  
-  // Set up periodic connection checks (but don't block game on failure)
-  startConnectionMonitoring();
-  
-  // Handle tab visibility changes
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-}
-
-function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') {
-    // Tab just became visible - do a fresh check with delay
-    // Give browser time to re-establish network connections
-    console.log('Tab became visible, will check connection...');
-    connectionFailCount = 0;
-    setTimeout(() => {
-      checkConnectionNow();
-    }, 500); // Small delay before checking
+    const response = await fetch('/api/health');
+    const data = await response.json();
+    isOnline = data.success;
+    updateConnectionStatus();
+  } catch {
+    isOnline = false;
+    updateConnectionStatus();
   }
 }
 
-async function checkConnectionNow(isRetry = false) {
-  if (typeof BeyondRareAPI === 'undefined') return;
-  
-  try {
-    const health = await BeyondRareAPI.checkHealth();
-    
-    if (health.success) {
-      connectionFailCount = 0;
-      lastSuccessfulCheck = Date.now();
-      
-      if (!isGameOnline) {
-        // We were offline, now back online
-        isGameOnline = true;
-        updateConnectionStatus(true);
-        await syncToServer();
-        await loadStreak();
-        await loadChallenges();
-      }
-    } else {
-      // If first failure and not a retry, try once more after a short delay
-      if (!isRetry && connectionFailCount === 0) {
-        console.log('Connection check failed, retrying...');
-        setTimeout(() => checkConnectionNow(true), 2000);
-        return;
-      }
-      connectionFailCount++;
-      if (connectionFailCount >= 2) {
-        updateConnectionStatus(false);
-      }
-    }
-  } catch (error) {
-    // If first failure and not a retry, try once more after a short delay
-    if (!isRetry && connectionFailCount === 0) {
-      console.log('Connection check error, retrying...');
-      setTimeout(() => checkConnectionNow(true), 2000);
-      return;
-    }
-    connectionFailCount++;
-    if (connectionFailCount >= 2) {
-      updateConnectionStatus(false);
-    }
-  }
-}
-
-function startConnectionMonitoring() {
-  if (connectionCheckInterval) clearInterval(connectionCheckInterval);
-  
-  connectionCheckInterval = setInterval(async () => {
-    // Don't check if tab is not visible
-    if (document.visibilityState !== 'visible') {
-      return;
-    }
-    
-    if (typeof BeyondRareAPI === 'undefined') return;
-    
-    await checkConnectionNow();
-  }, 30000); // Check every 30 seconds (less aggressive)
-}
-
-function updateConnectionStatus(online) {
-  isGameOnline = online;
-  
+function updateConnectionStatus() {
   let statusElem = document.getElementById('connectionStatus');
   if (!statusElem) {
     statusElem = document.createElement('div');
@@ -1452,7 +1370,7 @@ function updateConnectionStatus(online) {
     document.body.appendChild(statusElem);
   }
   
-  if (online) {
+  if (isOnline) {
     statusElem.className = 'connection-status online';
     statusElem.innerHTML = '<span class="connection-dot"></span> Online';
   } else {
@@ -1461,350 +1379,56 @@ function updateConnectionStatus(online) {
   }
 }
 
-function hideOfflinePopup() {
-  const popup = document.getElementById('offlinePopup');
-  if (popup) popup.style.display = 'none';
-}
-
-async function syncToServer() {
-  if (typeof BeyondRareAPI === 'undefined' || !BeyondRareAPI.isOnline()) return;
-  
-  try {
-    await BeyondRareAPI.syncProgress({
-      totalPoints: points,
-      totalClicks: totalClicks,
-      rarities: logData.map(name => ({ id: name.toLowerCase().replace(/\s+/g, '_') })),
-      backgrounds: Object.keys(ownedBackgrounds),
-      purchases: Object.keys(purchasedShopItems).map(id => ({ id, type: 'shop' }))
-    });
-    console.log('Progress synced to server');
-  } catch (error) {
-    console.error('Sync failed:', error);
+/******** TIMER ********/
+function updateTimer() {
+  if (!gameState.activeEffects.timeFreeze) {
+    const now = Date.now();
+    const secondsElapsed = ((now - gameState.startTime) / 1000).toFixed(1);
+    const timerElem = document.getElementById('timer');
+    if (timerElem) timerElem.textContent = `Time: ${secondsElapsed}s`;
   }
 }
 
-/******** Streak Functions ********/
-let currentStreakData = null;
-
-async function loadStreak() {
-  if (typeof BeyondRareAPI === 'undefined') return;
+/******** INITIALIZATION ********/
+async function init() {
+  loadGameState();
+  generateDailyTasks();
   
-  try {
-    const data = await BeyondRareAPI.getStreak();
-    if (data.success) {
-      currentStreakData = data.streak;
-      updateStreakDisplay();
-    }
-  } catch (error) {
-    console.error('Failed to load streak:', error);
+  // Restore background and skin
+  if (gameState.activeBackground !== 'default' && gameState.ownedBackgrounds[gameState.activeBackground]) {
+    setBackground(gameState.activeBackground);
   }
+  if (gameState.activeSkin !== 'default') {
+    setSkin(gameState.activeSkin);
+  }
+  
+  updateUI();
+  setupModalCloseHandlers();
+  startAutoClickers();
+  
+  // Timer update
+  setInterval(updateTimer, 100);
+  
+  // Check connection and register
+  await checkConnection();
+  if (isOnline) {
+    await checkUserIdWithServer();
+    await syncStatsToServer();
+  }
+  
+  // Periodic sync
+  setInterval(() => {
+    if (isOnline) syncStatsToServer();
+  }, 30000);
+  
+  // Periodic connection check
+  setInterval(checkConnection, 60000);
+  
+  checkAchievements();
 }
 
-function updateStreakDisplay() {
-  const streakCount = document.getElementById('streakCount');
-  if (streakCount && currentStreakData) {
-    streakCount.textContent = currentStreakData.current || 0;
-  }
-}
+// Set up click button
+document.getElementById('clickButton')?.addEventListener('click', () => doClick(true));
 
-function toggleStreakModal() {
-  const modal = document.getElementById('streakModal');
-  if (modal.style.display === 'block') {
-    modal.style.display = 'none';
-  } else {
-    modal.style.display = 'block';
-    displayStreakDetails();
-  }
-}
-
-function displayStreakDetails() {
-  if (!currentStreakData) {
-    loadStreak();
-    return;
-  }
-  
-  document.getElementById('currentStreak').textContent = currentStreakData.current || 0;
-  document.getElementById('longestStreak').textContent = currentStreakData.longest || 0;
-  document.getElementById('totalClaims').textContent = currentStreakData.totalClaims || 0;
-  
-  const claimBtn = document.getElementById('claimStreakBtn');
-  if (currentStreakData.canClaim) {
-    claimBtn.disabled = false;
-    claimBtn.textContent = 'Claim Daily Reward!';
-  } else {
-    claimBtn.disabled = true;
-    claimBtn.textContent = 'Already Claimed Today';
-  }
-  
-  // Display milestones
-  const milestonesList = document.getElementById('milestonesList');
-  milestonesList.innerHTML = '';
-  
-  if (currentStreakData.upcomingMilestones) {
-    currentStreakData.upcomingMilestones.forEach(milestone => {
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <span>Day ${milestone.day}</span>
-        <span>${milestone.reward.name || 'Special Skin!'}</span>
-      `;
-      milestonesList.appendChild(li);
-    });
-  }
-}
-
-async function claimDailyStreak() {
-  if (typeof BeyondRareAPI === 'undefined') {
-    alert('Server connection required for daily rewards!');
-    return;
-  }
-  
-  try {
-    const result = await BeyondRareAPI.claimStreak();
-    if (result.success) {
-      currentStreakData = result.streak;
-      currentStreakData.canClaim = false;
-      currentStreakData.upcomingMilestones = result.upcomingMilestones;
-      
-      updateStreakDisplay();
-      displayStreakDetails();
-      
-      // Show rewards
-      if (result.rewards && result.rewards.length > 0) {
-        result.rewards.forEach(reward => {
-          if (reward.type === 'points') {
-            points += reward.value;
-            localStorage.setItem('points', points);
-            updateShopDisplays();
-          } else if (reward.type === 'milestone') {
-            showAchievementPopup({
-              icon: '🎁',
-              name: `${reward.day}-Day Streak!`,
-              description: `Unlocked: ${reward.reward.name || 'Special Skin'}`
-            });
-          }
-        });
-      }
-      
-      // Show any unlocked achievements
-      if (result.unlockedAchievements) {
-        result.unlockedAchievements.forEach(achievement => {
-          showAchievementPopup({
-            icon: achievement.icon,
-            name: achievement.name,
-            description: `Tier ${achievement.newTier}/${achievement.maxTier}`
-          });
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Claim streak failed:', error);
-    alert('Failed to claim streak reward');
-  }
-}
-
-/******** Challenges Functions ********/
-let currentChallengesData = null;
-
-async function loadChallenges() {
-  if (typeof BeyondRareAPI === 'undefined') return;
-  
-  try {
-    const data = await BeyondRareAPI.getChallenges();
-    if (data.success) {
-      currentChallengesData = data;
-      updateChallengesDisplay();
-    }
-  } catch (error) {
-    console.error('Failed to load challenges:', error);
-  }
-}
-
-function updateChallengesDisplay() {
-  const progressElem = document.getElementById('challengesProgress');
-  if (progressElem && currentChallengesData) {
-    const completed = currentChallengesData.challenges.filter(c => c.isCompleted).length;
-    progressElem.textContent = `${completed}/3`;
-  }
-}
-
-function toggleChallengesModal() {
-  const modal = document.getElementById('challengesModal');
-  if (modal.style.display === 'block') {
-    modal.style.display = 'none';
-  } else {
-    modal.style.display = 'block';
-    displayChallengesDetails();
-  }
-}
-
-function displayChallengesDetails() {
-  if (!currentChallengesData) {
-    loadChallenges();
-    return;
-  }
-  
-  document.getElementById('challengesDate').textContent = `Challenges for ${currentChallengesData.date}`;
-  
-  const list = document.getElementById('challengesList');
-  list.innerHTML = '';
-  
-  currentChallengesData.challenges.forEach(challenge => {
-    const li = document.createElement('li');
-    li.className = challenge.isCompleted ? 'completed' : '';
-    
-    const progressPercent = Math.min(100, (challenge.currentProgress / challenge.target) * 100);
-    
-    li.innerHTML = `
-      <div class="challenge-header">
-        <span class="challenge-name">${challenge.name}</span>
-        <span class="challenge-status">${challenge.isCompleted ? '✅' : '⏳'}</span>
-      </div>
-      <div class="challenge-desc">${challenge.description}</div>
-      <div class="challenge-progress-bar">
-        <div class="challenge-progress-fill" style="width: ${progressPercent}%"></div>
-      </div>
-      <div class="challenge-progress-text">${challenge.currentProgress} / ${challenge.target}</div>
-    `;
-    
-    list.appendChild(li);
-  });
-  
-  // Show/hide claim button
-  const claimBtn = document.getElementById('claimChallengesBtn');
-  if (currentChallengesData.canClaimReward) {
-    claimBtn.style.display = 'inline-block';
-  } else if (currentChallengesData.rewardClaimed) {
-    claimBtn.style.display = 'inline-block';
-    claimBtn.disabled = true;
-    claimBtn.textContent = 'Reward Claimed! ✓';
-  } else {
-    claimBtn.style.display = 'none';
-  }
-}
-
-async function claimChallengesReward() {
-  if (typeof BeyondRareAPI === 'undefined') {
-    alert('Server connection required!');
-    return;
-  }
-  
-  try {
-    const result = await BeyondRareAPI.claimChallengeReward();
-    if (result.success) {
-      currentChallengesData.rewardClaimed = true;
-      currentChallengesData.canClaimReward = false;
-      displayChallengesDetails();
-      
-      // Show reward popup
-      if (result.reward && result.reward.skin) {
-        showAchievementPopup({
-          icon: '🎨',
-          name: 'Skin Unlocked!',
-          description: result.reward.skin.name
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Claim challenges reward failed:', error);
-    alert('Failed to claim reward');
-  }
-}
-
-/******** Skins Functions ********/
-let skinsData = null;
-let equippedSkin = localStorage.getItem('equippedSkin') || null;
-
-async function loadSkins() {
-  if (typeof BeyondRareAPI === 'undefined') return;
-  
-  try {
-    const data = await BeyondRareAPI.getSkins();
-    if (data.success) {
-      skinsData = data.skins;
-    }
-  } catch (error) {
-    console.error('Failed to load skins:', error);
-  }
-}
-
-function toggleSkinsModal() {
-  const modal = document.getElementById('skinsModal');
-  if (modal.style.display === 'block') {
-    modal.style.display = 'none';
-  } else {
-    modal.style.display = 'block';
-    displaySkinsGrid();
-  }
-}
-
-async function displaySkinsGrid() {
-  if (!skinsData) {
-    await loadSkins();
-  }
-  
-  const grid = document.getElementById('skinsGrid');
-  if (!grid) return;
-  
-  grid.innerHTML = '';
-  
-  if (!skinsData || skinsData.length === 0) {
-    grid.innerHTML = '<p>No skins available yet. Complete challenges and streaks to unlock skins!</p>';
-    return;
-  }
-  
-  skinsData.forEach(skin => {
-    const item = document.createElement('div');
-    item.className = `skin-item ${skin.owned ? '' : 'locked'} ${equippedSkin === skin.id ? 'equipped' : ''}`;
-    item.style.background = skin.gradient || skin.color || '#ccc';
-    
-    item.innerHTML = `
-      <div class="skin-preview" style="background: ${skin.buttonPreview || skin.gradient || '#fff'}"></div>
-      <div class="skin-name">${skin.name}</div>
-      ${!skin.owned ? '<span class="skin-lock">🔒</span>' : ''}
-    `;
-    
-    if (skin.owned) {
-      item.onclick = () => equipSkin(skin.id);
-    }
-    
-    grid.appendChild(item);
-  });
-}
-
-function equipSkin(skinId) {
-  equippedSkin = skinId;
-  localStorage.setItem('equippedSkin', skinId);
-  
-  // Apply skin to click button
-  const skin = skinsData?.find(s => s.id === skinId);
-  if (skin) {
-    const clickBtn = document.getElementById('clickButton');
-    clickBtn.style.background = skin.gradient || skin.color || '';
-  }
-  
-  displaySkinsGrid();
-}
-
-// Add skins button to settings modal
-function addSkinsButton() {
-  const shopSection = document.querySelector('.shop-section');
-  if (shopSection && !document.getElementById('skinsBtn')) {
-    const skinsBtn = document.createElement('button');
-    skinsBtn.id = 'skinsBtn';
-    skinsBtn.className = 'small-btn';
-    skinsBtn.textContent = '🎨 Button Skins';
-    skinsBtn.onclick = () => {
-      toggleSettingsModal();
-      toggleSkinsModal();
-    };
-    shopSection.appendChild(skinsBtn);
-  }
-}
-
-/******** Main Click Button Event Listener ********/
-document.getElementById("clickButton").addEventListener("click", function() {
-  generateRarity(true);
-});
-
-// Initialize the game
+// Initialize
 init();
